@@ -27,12 +27,12 @@ export function TitleFields({ compact = false }: { compact?: boolean }) {
     setTitleBlock(next);
   };
   return (
-    <div className={compact ? "grid grid-cols-2 gap-1" : "flex flex-col gap-1"}>
+    <div className="flex flex-col gap-1">
       {FIELDS.map(([k, label]) => (
         <label key={k} className="flex items-center justify-between gap-2 text-[12px]">
           {label}
           <input
-            className="mac-field w-[160px]"
+            className={compact ? "mac-field w-[150px]" : "mac-field w-[160px]"}
             value={draft[k]}
             placeholder={k === "scale" ? "layer scale" : k === "title" ? "Untitled" : ""}
             onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}

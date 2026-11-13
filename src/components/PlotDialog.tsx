@@ -40,7 +40,7 @@ export function PlotDialog({ onClose }: { onClose(): void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/10 pt-20" onPointerDown={onClose}>
       <div className="mac-frame p-[3px]" style={{ outline: "1px solid #000", outlineOffset: -4 }} onPointerDown={(e) => e.stopPropagation()}>
-        <div className="flex w-[640px] gap-4 p-4">
+        <div className="flex w-[680px] gap-3 p-3">
           <div className="w-[320px] shrink-0">
             <PagePreview height={280} />
           </div>
