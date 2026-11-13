@@ -19,6 +19,7 @@ import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from
 import { describeSelection } from "../state/inspect";
 import { SheetDialog } from "./SheetDialog";
 import { TitleBlockDialog } from "./TitleBlockDialog";
+import { GUIDE_SECTIONS, GuideDialog } from "./GuideDialog";
 import { shortcutText } from "../input/keymap";
 import { runCommand } from "../input/runCommand";
 
@@ -57,6 +58,7 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
   const [plotOpen, setPlotOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [titleOpen, setTitleOpen] = useState(false);
+  const [guideTab, setGuideTab] = useState<number | null>(null);
   useEffect(() => {
     const open = () => setPlotOpen(true);
     window.addEventListener("temaricad:plot", open);
@@ -313,6 +315,14 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
         { label: "Shortcuts", shortcut: sc("window.shortcuts"), checked: Boolean(keysOpen), run: () => window.dispatchEvent(new CustomEvent("temaricad:command", { detail: "window.shortcuts" })) },
       ],
     },
+    {
+      title: "Guide",
+      items: [
+        { label: "Complete User Guide…", run: () => setGuideTab(0) },
+        "-",
+        ...GUIDE_SECTIONS.map((s, idx) => ({ label: `${idx + 1}. ${s.title}`, run: () => setGuideTab(idx) })),
+      ],
+    },
   ];
 
   useEffect(() => {
@@ -329,6 +339,7 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
     {plotOpen && <PlotDialog onClose={() => setPlotOpen(false)} />}
     {sheetOpen && <SheetDialog onClose={() => setSheetOpen(false)} />}
     {titleOpen && <TitleBlockDialog onClose={() => setTitleOpen(false)} />}
+    {guideTab !== null && <GuideDialog initialTab={guideTab} onClose={() => setGuideTab(null)} />}
     {dialog && (
       <Dialog
         title={dialog.title}
