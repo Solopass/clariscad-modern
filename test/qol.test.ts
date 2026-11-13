@@ -7,6 +7,8 @@ import { useDocumentStore } from "../src/state/useDocumentStore";
 import { booleanSelection } from "../src/state/arrange";
 import { type Entity } from "../src/kernel/types";
 import { describeSelection } from "../src/state/inspect";
+import { parseDocument, serializeDocument } from "../src/io/nativeJson";
+import { exportDxf, importDxf } from "../src/io/dxfCodec";
 
 describe("tangent touch intersections", () => {
   test("line tangent to an ellipse at its top vertex", () => {
@@ -112,5 +114,32 @@ describe("regionOps: area, booleans, enclosed hatch", () => {
     const info = describeSelection();
     expect(info?.note).toContain("5000.0 mm²");
     expect(formatArea(1000, "mm")).toBe("1000.0 mm²");
+  });
+
+  test(".tcad preserves saved views and DXF exports multi-line text cleanly", () => {
+    const ds = useDocumentStore.getState();
+    const doc = {
+      ...ds.doc,
+      units: "mm" as const,
+      views: [{ id: "v1", name: "Detail A", cx: 100, cy: 200, zoom: 2.5 }],
+      entities: [
+        {
+          id: "t1",
+          layerId: ds.doc.activeLayerId,
+          kind: "text" as const,
+          position: { x: 10, y: 20 },
+          text: "Line 1\nLine 2",
+          height: 5,
+          rotation: 0,
+          align: "left" as const,
+        },
+      ],
+    };
+    const parsed = parseDocument(serializeDocument(doc));
+    expect(parsed.doc.views).toEqual(doc.views);
+    const dxf = exportDxf(doc, {});
+    const imp = importDxf(dxf);
+    const texts = imp.doc.entities.filter((e) => e.kind === "text");
+    expect(texts.map((t) => (t.kind === "text" ? t.text : ""))).toEqual(["Line 1", "Line 2"]);
   });
 });

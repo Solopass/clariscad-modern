@@ -1,6 +1,6 @@
 // .tcad: the native file. A small wrapper around the CadDocument; the
 // document's own `version` is the schema version (migrated before validation).
-import { DOCUMENT_VERSION, type CadDocument, type Entity, type EntityKind, type TitleBlock } from "../kernel/types";
+import { DOCUMENT_VERSION, type CadDocument, type Entity, type EntityKind, type SavedView, type TitleBlock } from "../kernel/types";
 import { normalizeSheet } from "../state/sheetModel";
 
 export const FILE_EXT = "tcad";
@@ -38,6 +38,19 @@ const DIM_TYPES = new Set(["horizontal", "vertical", "aligned", "angular", "radi
  * Check (and where harmless, repair) an entity's fields. Returns false if it
  * can't be drawn safely; optional numbers that are missing get their defaults.
  */
+function readViews(raw: unknown): SavedView[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: SavedView[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== "object") continue;
+    const o = v as Record<string, unknown>;
+    if (typeof o.id === "string" && typeof o.name === "string" && typeof o.cx === "number" && typeof o.cy === "number" && typeof o.zoom === "number" && Number.isFinite(o.zoom) && o.zoom > 0) {
+      out.push({ id: o.id, name: o.name, cx: o.cx, cy: o.cy, zoom: o.zoom });
+    }
+  }
+  return out.length ? out : undefined;
+}
+
 function readTitle(t: unknown): TitleBlock | undefined {
   if (!t || typeof t !== "object") return undefined;
   const o = t as Record<string, unknown>;
@@ -190,6 +203,7 @@ export function parseDocument(text: string): LoadResult {
     symbols: symbols(d, warnings),
     sheet: normalizeSheet(d.sheet),
     ...(readTitle(d.titleBlock) ? { titleBlock: readTitle(d.titleBlock) } : {}),
+    ...(readViews(d.views) ? { views: readViews(d.views) } : {}),
   };
   return { doc, warnings };
 }

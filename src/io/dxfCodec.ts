@@ -14,6 +14,7 @@ import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
 import { outlineOf } from "../kernel/hatch";
 import { toPath } from "../kernel/path";
 import type { DimensionEntity, LineEnding } from "../kernel/types";
+import { LINE_HEIGHT, textLines } from "../kernel/textMetrics";
 import { TAU, normAngle } from "../kernel/vec";
 
 // ---------------------------------------------------------------- colours
@@ -307,20 +308,28 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     return name;
   };
   const text = (e: Entity, layer: string, p: { x: number; y: number }, str: string, em: number, angle: number, align: "left" | "center" | "right") => {
-    g(0, "TEXT");
-    common(e, layer);
-    g(10, X(p.x));
-    g(20, X(p.y));
-    g(30, 0);
-    g(40, X(em * 0.72)); // DXF height is the cap height
-    g(1, str.replace(/[\r\n]+/g, " "));
-    if (angle) g(50, (normAngle(angle) * 180) / Math.PI);
-    if (align !== "left") {
-      g(72, align === "center" ? 1 : 2);
-      g(11, X(p.x));
-      g(21, X(p.y));
-      g(31, 0);
-    }
+    const lines = textLines(str);
+    const step = LINE_HEIGHT * em;
+    const s = Math.sin(angle);
+    const c = Math.cos(angle);
+    lines.forEach((line, i) => {
+      const px = p.x + s * step * i;
+      const py = p.y - c * step * i;
+      g(0, "TEXT");
+      common(e, layer);
+      g(10, X(px));
+      g(20, X(py));
+      g(30, 0);
+      g(40, X(em * 0.72)); // DXF height is the cap height
+      g(1, line.replace(/[\r\n]+/g, " "));
+      if (angle) g(50, (normAngle(angle) * 180) / Math.PI);
+      if (align !== "left") {
+        g(72, align === "center" ? 1 : 2);
+        g(11, X(px));
+        g(21, X(py));
+        g(31, 0);
+      }
+    });
   };
 
   const emit = (e: Entity, layer: string) => {
