@@ -82,6 +82,14 @@ export function ToolIcon({ id }: { id: ToolId }) {
             A
           </text>
         );
+      case "match":
+        return (
+          <g>
+            <path d="M10 2 L10 12" {...S} />
+            <path d="M6 8 L10 13 L14 8" {...S} />
+            <circle cx="10" cy="16.5" r="1.6" fill="currentColor" stroke="none" />
+          </g>
+        );
       case "symbol":
         return (
           <g>

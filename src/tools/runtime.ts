@@ -143,7 +143,7 @@ export class DrawTool implements Tool {
   }
 
   private isPick(i: number) {
-    return !!this.method.rawPicks?.includes(i);
+    return !!this.method.rawPicks?.includes(i) || !!this.method.rawPicks?.includes(-1);
   }
 
   prompt() {
@@ -417,7 +417,8 @@ export class SelectTool implements Tool {
 
   private ok(alt = false) {
     const filter = this.ctx.settings().selectFilter;
-    return (e: Entity) => canSelect(this.ctx.doc(), e, { allowLocked: alt, filter });
+    const hidden = new Set(this.ctx.doc().entities.flatMap((e) => (e.bufferInst ? [e.bufferInst] : [])));
+    return (e: Entity) => !hidden.has(e.id) && canSelect(this.ctx.doc(), e, { allowLocked: alt, filter });
   }
 
   /** Drop members the current filter or lock state will not take. */

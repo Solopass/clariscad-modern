@@ -159,6 +159,21 @@ export function MethodsBar() {
           </>
         )}
         {tool === "fillet" && <LengthField label="Radius" value={settings.filletRadius} min={0} onChange={(v) => set("filletRadius", v)} />}
+        {tool === "match" &&
+          (
+            [
+              ["matchPen", "Pen"],
+              ["matchDash", "Pattern"],
+              ["matchEndings", "Endings"],
+              ["matchFill", "Fill"],
+              ["matchLayer", "Layer"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="inline-flex items-center gap-1">
+              <input type="checkbox" checked={settings[key] !== false} onChange={(e) => set(key, e.target.checked)} />
+              {label}
+            </label>
+          ))}
         {tool === "chamfer" && (
           <>
             <LengthField label="Distance 1" value={settings.chamferD1} min={0} onChange={(v) => set("chamferD1", v)} />

@@ -25,7 +25,8 @@ export type ToolId =
   | "chamfer"
   | "symbol"
   | "text"
-  | "cleanup";
+  | "cleanup"
+  | "match";
 
 export type TrimModeSetting = "both" | "first" | "none";
 
@@ -74,6 +75,12 @@ export interface ToolSettings {
   endEnding: "" | LineEnding;
   /** Select tool: only this kind, or "all". */
   selectFilter: string;
+  /** Match Properties: which fields the eyedropper copies. Absent means yes. */
+  matchPen?: boolean;
+  matchDash?: boolean;
+  matchEndings?: boolean;
+  matchFill?: boolean;
+  matchLayer?: boolean;
 }
 
 export interface ToolState {
@@ -110,6 +117,7 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   symbol: "place",
   text: "place",
   cleanup: "openT",
+  match: "selection",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {
