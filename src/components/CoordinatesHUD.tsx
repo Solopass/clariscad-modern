@@ -26,6 +26,7 @@ export function CoordinatesHUD() {
   const prompt = useCursorStore((s) => s.prompt);
   const units = useDocumentStore((s) => s.doc.units);
   const doc = useDocumentStore((s) => s.doc);
+  const editing = doc.entities.some((e) => e.bufferOf);
   const view = useCursorStore((s) => s.view);
   const zoomPct = Math.round((view.zoom / zoomAtPaperSize(doc)) * 100);
   const [edits, setEdits] = useState<Partial<Record<Field, string>>>({});
@@ -117,7 +118,7 @@ export function CoordinatesHUD() {
         {Number.isFinite(zoomPct) ? `${zoomPct}%` : ""}
       </span>
       <span className="truncate text-[11px]" style={{ color: error ? "#d6001c" : "#333" }}>
-        {error || prompt}
+        {error || (editing ? "Editing symbol — changes update every copy. Alt+Shift+E finishes." : prompt)}
       </span>
     </div>
   );

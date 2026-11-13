@@ -7,6 +7,7 @@ import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from
 import { explodeSelection, makeSymbol } from "../state/symbols";
 import { editDimensionText, flipSelectedDimensions } from "../state/dimEdit";
 import { flipDoorSwings } from "../state/wallEdit";
+import { toggleSymbolEdit } from "../state/symbolEdit";
 import { selectableIds } from "../state/selection";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
@@ -176,6 +177,7 @@ export function runCommand(id: string, host: CommandHost): boolean {
       flipDoorSwings();
       return true;
     case "symbol.edit":
+      toggleSymbolEdit();
       return true;
     default:
       return false;
