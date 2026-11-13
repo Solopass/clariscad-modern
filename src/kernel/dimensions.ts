@@ -85,6 +85,10 @@ function label(d: DimensionEntity, measured: string): string {
   return d.textOverride.replace("<>", measured);
 }
 
+function setText(g: DimGeometry, d: DimensionEntity, pos: Vec2, angle: number, str: string, height: number) {
+  g.text = { pos: d.textShift ? add(pos, d.textShift) : pos, angle, str, height };
+}
+
 function fmtAngle(rad: number, places: number): string {
   const deg = (rad * 180) / Math.PI;
   return `${+deg.toFixed(places)}°`;
@@ -149,11 +153,11 @@ export function dimGeometry(d: DimensionEntity, k: number, st: DimStyle, units: 
     if (st.textPlacement === "inline" && value > tw + 2 * st.textGap * k + 2 * st.arrowSize * k) {
       const half = tw / 2 + st.textGap * k;
       g.lines.push([d1, add(m, scale(dir, -half))], [add(m, scale(dir, half)), d2]);
-      g.text = { pos: m, angle: ang, str, height: h };
+      setText(g, d, m, ang, str, h);
     } else {
       g.lines.push([d1, d2]);
       const up = perp(fromAngle(ang));
-      g.text = { pos: add(m, scale(up, st.textGap * k + h / 2)), angle: ang, str, height: h };
+      setText(g, d, add(m, scale(up, st.textGap * k + h / 2)), ang, str, h);
     }
     return g;
   }
@@ -196,7 +200,7 @@ export function dimGeometry(d: DimensionEntity, k: number, st: DimStyle, units: 
     }
     const midA = best.start + best.sweep / 2;
     const str = label(d, fmtAngle(best.sweep, st.anglePrecision));
-    g.text = { pos: add(X, fromAngle(midA, r + st.textGap * k + h / 2)), angle: upright(midA - Math.PI / 2), str, height: h };
+    setText(g, d, add(X, fromAngle(midA, r + st.textGap * k + h / 2)), upright(midA - Math.PI / 2), str, h);
     return g;
   }
 
@@ -219,7 +223,7 @@ export function dimGeometry(d: DimensionEntity, k: number, st: DimStyle, units: 
     }
     const str = label(d, (d.dimType === "radius" ? "R" : "⌀") + formatLength(g.value, units));
     const pos = outside ? add(lp, { x: (dir.x >= 0 ? 1 : -1) * (textWidth(str, h) / 2 + st.textGap * k), y: 0 }) : add(mid(c, edge), scale(perp(dir), st.textGap * k + h / 2));
-    g.text = { pos, angle: outside ? 0 : upright(angleOf(dir)), str, height: h };
+    setText(g, d, pos, outside ? 0 : upright(angleOf(dir)), str, h);
     return g;
   }
 
@@ -231,6 +235,48 @@ export function dimGeometry(d: DimensionEntity, k: number, st: DimStyle, units: 
     return g;
   }
   return g;
+}
+
+/**
+ * Put the dimension line on the other side of what it measures. The text offset
+ * and the measured references stay, so the dimension does not have to be redrawn.
+ */
+export function flipDimension(d: DimensionEntity): DimensionEntity {
+  const lp = d.linePoint;
+  const [p1, p2] = d.points;
+  if ((d.dimType === "horizontal" || d.dimType === "vertical") && p1 && p2) {
+    if (d.dimType === "horizontal") {
+      const midY = (p1.y + p2.y) / 2;
+      return { ...d, linePoint: { x: lp.x, y: 2 * midY - lp.y } };
+    }
+    const midX = (p1.x + p2.x) / 2;
+    return { ...d, linePoint: { x: 2 * midX - lp.x, y: lp.y } };
+  }
+  if (d.dimType === "aligned" && p1 && p2 && dist(p1, p2) > 0) {
+    const n = perp(normalize(sub(p2, p1)));
+    const off = dot(sub(lp, p1), n);
+    return { ...d, linePoint: add(lp, scale(n, -2 * off)) };
+  }
+  if (d.dimType === "angular") {
+    const [a1, b1, a2, b2] = d.points;
+    if (a1 && b1 && a2 && b2) {
+      const X = lineLine(a1, sub(b1, a1), a2, sub(b2, a2))?.point;
+      if (X) return { ...d, linePoint: { x: 2 * X.x - lp.x, y: 2 * X.y - lp.y } };
+    }
+  }
+  if ((d.dimType === "radius" || d.dimType === "diameter") && d.points[0]) {
+    const c = d.points[0];
+    return { ...d, linePoint: { x: 2 * c.x - lp.x, y: 2 * c.y - lp.y } };
+  }
+  return d;
+}
+
+/** Shift that puts the text at `dropped`, relative to the unshifted default. Absent when it lands on the default. */
+export function textShiftFor(d: DimensionEntity, dropped: Vec2, k: number, st: DimStyle, units: UnitSystem): Vec2 | undefined {
+  const base = dimGeometry({ ...d, textShift: undefined }, k, st, units).text?.pos;
+  if (!base) return d.textShift;
+  const shift = sub(dropped, base);
+  return Math.hypot(shift.x, shift.y) < 1e-6 ? undefined : shift;
 }
 
 /**

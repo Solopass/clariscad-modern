@@ -10,11 +10,15 @@ import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, sav
 import type { PaletteId, PaletteState } from "../App";
 import type { DraftingStandard } from "../kernel/types";
 import { explodeSelection, makeSymbol } from "../state/symbols";
+import { editDimensionText, flipSelectedDimensions } from "../state/dimEdit";
+import { flipDoorSwings } from "../state/wallEdit";
+import { toggleSymbolEdit } from "../state/symbolEdit";
 import { alignSelection, duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
 import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
 import { describeSelection } from "../state/inspect";
 import { SheetDialog } from "./SheetDialog";
+import { TitleBlockDialog } from "./TitleBlockDialog";
 import { shortcutText } from "../input/keymap";
 import { runCommand } from "../input/runCommand";
 
@@ -52,6 +56,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [plotOpen, setPlotOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [titleOpen, setTitleOpen] = useState(false);
   useEffect(() => {
     const open = () => setPlotOpen(true);
     window.addEventListener("temaricad:plot", open);
@@ -66,6 +71,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
       if (id === "file.plot") setPlotOpen(true);
       else if (id === "edit.info") info();
       else if (id === "layout.sheet") setSheetOpen(true);
+      else if (id === "layout.title") setTitleOpen(true);
       else if (id === "arrange.step")
         setDialog({
           title: "Step and Repeat",
@@ -267,6 +273,11 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
             },
           },
           { label: "Explode Symbol", shortcut: sc("arrange.explode"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "symbol"), run: explodeSelection },
+          "-",
+          { label: "Flip Dimension", shortcut: sc("dim.flip"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "dimension"), run: flipSelectedDimensions },
+          { label: "Dimension Text…", shortcut: sc("dim.text"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "dimension"), run: () => editDimensionText() },
+          { label: "Flip Door Swing", shortcut: sc("wall.swing"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "wall" && e.openings?.length), run: flipDoorSwings },
+          { label: ds.doc.entities.some((e) => e.bufferOf) ? "Finish Symbol" : "Edit Symbol", shortcut: sc("symbol.edit"), disabled: !ds.doc.entities.some((e) => e.bufferOf) && !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "symbol"), run: toggleSymbolEdit },
         ] as (Item | "-")[];
       })(),
     },
@@ -274,6 +285,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
       title: "Layout",
       items: [
         { label: "Rulers & Drawing Size…", shortcut: sc("layout.sheet"), run: () => setSheetOpen(true) },
+        { label: "Title Block…", shortcut: sc("layout.title"), run: () => setTitleOpen(true) },
         "-",
         ...UNITS.map(([u, label]) => ({ label, checked: ds.doc.units === u, run: () => ds.setUnits(u) })),
         "-",
@@ -310,6 +322,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
     <>
     {plotOpen && <PlotDialog onClose={() => setPlotOpen(false)} />}
     {sheetOpen && <SheetDialog onClose={() => setSheetOpen(false)} />}
+    {titleOpen && <TitleBlockDialog onClose={() => setTitleOpen(false)} />}
     {dialog && (
       <Dialog
         title={dialog.title}

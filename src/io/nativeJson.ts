@@ -1,6 +1,6 @@
 // .tcad: the native file. A small wrapper around the CadDocument; the
 // document's own `version` is the schema version (migrated before validation).
-import { DOCUMENT_VERSION, type CadDocument, type Entity, type EntityKind } from "../kernel/types";
+import { DOCUMENT_VERSION, type CadDocument, type Entity, type EntityKind, type TitleBlock } from "../kernel/types";
 import { normalizeSheet } from "../state/sheetModel";
 
 export const FILE_EXT = "tcad";
@@ -13,7 +13,8 @@ interface TcadFile {
 }
 
 export function serializeDocument(doc: CadDocument): string {
-  const file: TcadFile = { format: "tcad", app: "TemariCad", savedAt: new Date().toISOString(), document: doc };
+  const document = { ...doc, entities: doc.entities.filter((e) => !e.bufferOf) };
+  const file: TcadFile = { format: "tcad", app: "TemariCad", savedAt: new Date().toISOString(), document };
   return JSON.stringify(file);
 }
 
@@ -37,6 +38,13 @@ const DIM_TYPES = new Set(["horizontal", "vertical", "aligned", "angular", "radi
  * Check (and where harmless, repair) an entity's fields. Returns false if it
  * can't be drawn safely; optional numbers that are missing get their defaults.
  */
+function readTitle(t: unknown): TitleBlock | undefined {
+  if (!t || typeof t !== "object") return undefined;
+  const o = t as Record<string, unknown>;
+  const s = (k: string) => (typeof o[k] === "string" ? (o[k] as string) : "");
+  return { title: s("title"), drawnBy: s("drawnBy"), date: s("date"), scale: s("scale"), sheetNo: s("sheetNo") || "1" };
+}
+
 function entityOk(e: Entity): boolean {
   if (!e || typeof e !== "object" || typeof e.id !== "string" || typeof e.layerId !== "string" || !KINDS.has(e.kind)) return false;
   const any = e as unknown as Record<string, unknown>;
@@ -165,6 +173,7 @@ export function parseDocument(text: string): LoadResult {
   for (const l of layers) if (!(l.scale > 0)) l.scale = 1;
   const layerIds = new Set(layers.map((l) => l.id));
   const entities = (Array.isArray(d.entities) ? d.entities : []).filter((e) => {
+    if (e?.bufferOf) return false;
     const ok = entityOk(e);
     if (ok && !layerIds.has(e.layerId)) e.layerId = layers[0].id;
     return ok;
@@ -180,6 +189,7 @@ export function parseDocument(text: string): LoadResult {
     entities,
     symbols: symbols(d, warnings),
     sheet: normalizeSheet(d.sheet),
+    ...(readTitle(d.titleBlock) ? { titleBlock: readTitle(d.titleBlock) } : {}),
   };
   return { doc, warnings };
 }

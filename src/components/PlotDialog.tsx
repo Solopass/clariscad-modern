@@ -5,6 +5,8 @@ import { SCALE_PRESETS } from "../state/layers";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { exportPdfFile, exportSvgFile, plotLayout } from "../state/fileCommands";
 import { MAX_SHEETS } from "../io/pdfPlotter";
+import { PagePreview } from "./PagePreview";
+import { TitleFields } from "./TitleBlockDialog";
 
 const KEY = "temaricad.plot.v1";
 
@@ -38,7 +40,11 @@ export function PlotDialog({ onClose }: { onClose(): void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/10 pt-20" onPointerDown={onClose}>
       <div className="mac-frame p-[3px]" style={{ outline: "1px solid #000", outlineOffset: -4 }} onPointerDown={(e) => e.stopPropagation()}>
-        <div className="flex w-[340px] flex-col gap-2 p-4">
+        <div className="flex w-[680px] gap-3 p-3">
+          <div className="w-[320px] shrink-0">
+            <PagePreview height={280} />
+          </div>
+          <div className="flex w-[280px] shrink-0 flex-col gap-2">
           <b>Plot</b>
           <label className="flex items-center justify-between">
             Paper
@@ -80,6 +86,8 @@ export function PlotDialog({ onClose }: { onClose(): void }) {
             <input type="checkbox" checked={o.penByColor} onChange={(e) => set({ penByColor: e.target.checked })} />
             Pen widths by colour (black 0.35, blue 0.50, red 0.18 mm …)
           </label>
+          <b className="mt-1">Title block</b>
+          <TitleFields compact />
           <p className="text-[11px] text-[#444]">
             {info.error
               ? info.error
@@ -113,6 +121,7 @@ export function PlotDialog({ onClose }: { onClose(): void }) {
             >
               Save PDF…
             </button>
+          </div>
           </div>
         </div>
       </div>

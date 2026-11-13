@@ -1,14 +1,19 @@
 // DXF import/export.
-//  Writer: AutoCAD R12 ASCII (AC1009) — the widest compatibility. Units are inches
+//  Writer: AutoCAD 2000 ASCII (AC1015). R2000 is the oldest release that has real
+//  HATCH entities and DIMENSION subclasses. Units are inches
 //  for imperial drawings and millimetres otherwise. No handles.
 //  Reader: R12 and R2000+ ASCII: LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX,
-//  ELLIPSE, SPLINE, XLINE/RAY, TEXT, MTEXT, SOLID, INSERT (+BLOCKS), DIMENSION (its
-//  anonymous block, as plain geometry), layers, colours and linetypes.
+//  ELLIPSE, SPLINE, XLINE/RAY, TEXT, MTEXT, SOLID, INSERT (+BLOCKS), HATCH,
+//  DIMENSION (as a dimension when TemariCAD wrote it, otherwise its block),
+//  layers, colours, linetypes and line-ending extended data.
 import type { CadDocument, Entity, Id, Layer, SymbolDef, UnitSystem } from "../kernel/types";
 import { DOCUMENT_VERSION } from "../kernel/types";
 import { type PrimContext, flattenPrim, primsOf } from "../kernel/prims";
 import { STANDARDS, dimGeometry } from "../kernel/dimensions";
+import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
+import { outlineOf } from "../kernel/hatch";
 import { toPath } from "../kernel/path";
+import type { DimensionEntity, LineEnding } from "../kernel/types";
 import { TAU, normAngle } from "../kernel/vec";
 
 // ---------------------------------------------------------------- colours
@@ -79,9 +84,10 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
   const imperial = IMPERIAL.includes(doc.units);
   const u = imperial ? 1 / 25.4 : 1;
   const out: string[] = [];
+  let sink = out;
   const g = (code: number, value: string | number) => {
-    out.push(String(code));
-    out.push(typeof value === "number" ? fmt(value) : value);
+    sink.push(String(code));
+    sink.push(typeof value === "number" ? fmt(value) : value);
   };
   const fmt = (v: number) => {
     if (!Number.isFinite(v)) return "0.0";
@@ -103,7 +109,7 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
   g(0, "SECTION");
   g(2, "HEADER");
   g(9, "$ACADVER");
-  g(1, "AC1009");
+  g(1, "AC1015");
   g(9, "$INSUNITS");
   g(70, imperial ? 1 : 4);
   g(9, "$MEASUREMENT");
@@ -153,6 +159,13 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     g(6, "CONTINUOUS");
   }
   g(0, "ENDTAB");
+  g(0, "TABLE");
+  g(2, "APPID");
+  g(70, 1);
+  g(0, "APPID");
+  g(2, "TEMARICAD");
+  g(70, 0);
+  g(0, "ENDTAB");
   g(0, "ENDSEC");
 
   const style = STANDARDS[doc.standard] ?? STANDARDS.ANSI;
@@ -164,7 +177,7 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     if (e.style?.dash && LTYPES[e.style.dash]) g(6, LTYPES[e.style.dash].dxf);
     if (e.style?.color) g(62, hexToAci(e.style.color));
   };
-  const line = (e: Entity, layer: string, a: { x: number; y: number }, b: { x: number; y: number }) => {
+  const line = (e: Entity, layer: string, a: { x: number; y: number }, b: { x: number; y: number }, annotate = false) => {
     g(0, "LINE");
     common(e, layer);
     g(10, X(a.x));
@@ -173,8 +186,9 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     g(11, X(b.x));
     g(21, X(b.y));
     g(31, 0);
+    if (annotate) note(e);
   };
-  const polyline = (e: Entity, layer: string, pts: { x: number; y: number }[], closed: boolean, bulges?: number[]) => {
+  const polyline = (e: Entity, layer: string, pts: { x: number; y: number }[], closed: boolean, bulges?: number[], tail?: () => void) => {
     if (pts.length < 2) return;
     g(0, "POLYLINE");
     common(e, layer);
@@ -183,6 +197,7 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     g(20, 0);
     g(30, 0);
     g(70, closed ? 1 : 0);
+    tail?.();
     pts.forEach((p, i) => {
       g(0, "VERTEX");
       g(8, layer);
@@ -193,6 +208,103 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     });
     g(0, "SEQEND");
     g(8, layer);
+  };
+  const note = (e: Entity) => {
+    const tags: string[] = [];
+    if (e.style?.startEnding) tags.push(`start=${e.style.startEnding}`);
+    if (e.style?.endEnding) tags.push(`end=${e.style.endEnding}`);
+    if (e.style?.fill) tags.push(`fill=${e.style.fill}`);
+    if (!tags.length) return;
+    g(1001, "TEMARICAD");
+    for (const t of tags) g(1000, t);
+  };
+  const emitEndings = (e: Entity, layer: string) => {
+    const k = layerScale(e.layerId);
+    for (const end of pathEnds(e)) {
+      const kind = endingKind(e, end.at);
+      if (!kind) continue;
+      const shape = endingOutline(end.tip, end.dir, kind, 3.2 * k);
+      polyline(e, layer, shape.pts, !!shape.fill, undefined, () => {
+        g(1001, "TEMARICAD");
+        g(1000, "role=ending");
+      });
+    }
+  };
+  const emitHatch = (e: Entity, layer: string) => {
+    const fill = e.style?.fill;
+    if (!fill) return;
+    const rings = outlineOf(e, ctx);
+    if (!rings?.length) return;
+    const solid = fill === "solid" || fill.startsWith("gray");
+    g(0, "HATCH");
+    g(100, "AcDbEntity");
+    common(e, layer);
+    g(100, "AcDbHatch");
+    g(10, 0);
+    g(20, 0);
+    g(30, 0);
+    g(210, 0);
+    g(220, 0);
+    g(230, 1);
+    g(2, solid ? "SOLID" : fill.toUpperCase());
+    g(70, solid ? 1 : 0);
+    g(71, 0);
+    g(91, rings.length);
+    for (const ring of rings) {
+      g(92, 3);
+      g(72, 0);
+      g(73, 1);
+      g(93, ring.length);
+      for (const p of ring) {
+        g(10, X(p.x));
+        g(20, X(p.y));
+      }
+      g(97, 0);
+    }
+    g(75, 1);
+    g(76, 1);
+    if (!solid) {
+      g(52, 0);
+      g(41, 1);
+      g(77, 0);
+      g(78, 1);
+      g(53, 45);
+      g(43, 0);
+      g(44, 0);
+      g(45, 0);
+      g(46, 1);
+      g(79, 0);
+    }
+    g(98, 0);
+    g(1001, "TEMARICAD");
+    g(1000, "role=pattern");
+  };
+  const picture = (e: DimensionEntity, layer: string) => {
+    const geo = dimGeometry(e, layerScale(e.layerId), style, doc.units);
+    for (const [a, b] of geo.lines) line(e, layer, a, b);
+    for (const a of geo.arcs) polyline(e, layer, flattenPrim({ t: "arc", ...a }, tol).pts, false);
+    for (const poly of geo.arrows) polyline(e, layer, poly, true);
+    if (geo.text) {
+      const down = 0.28 * geo.text.height;
+      const p = { x: geo.text.pos.x + Math.sin(geo.text.angle) * down, y: geo.text.pos.y - Math.cos(geo.text.angle) * down };
+      text(e, layer, p, geo.text.str, geo.text.height, geo.text.angle, "center");
+    }
+  };
+  const dimBlocks: { name: string; body: string[] }[] = [];
+  const dimName = new Map<string, string>();
+  let dimN = 0;
+  const ensureDim = (e: DimensionEntity) => {
+    const have = dimName.get(e.id);
+    if (have) return have;
+    const name = `*D${++dimN}`;
+    const body: string[] = [];
+    const prev = sink;
+    sink = body;
+    picture(e, "0");
+    sink = prev;
+    dimBlocks.push({ name, body });
+    dimName.set(e.id, name);
+    return name;
   };
   const text = (e: Entity, layer: string, p: { x: number; y: number }, str: string, em: number, angle: number, align: "left" | "center" | "right") => {
     g(0, "TEXT");
@@ -216,7 +328,9 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
       case "guide":
         return; // construction lines are not exported
       case "line":
-        return line(e, layer, e.a, e.b);
+        line(e, layer, e.a, e.b, true);
+        emitEndings(e, layer);
+        return;
       case "circle":
         g(0, "CIRCLE");
         common(e, layer);
@@ -224,6 +338,8 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
         g(20, X(e.center.y));
         g(30, 0);
         g(40, X(e.r));
+        note(e);
+        emitHatch(e, layer);
         return;
       case "arc":
         g(0, "ARC");
@@ -234,6 +350,8 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
         g(40, X(e.r));
         g(50, (normAngle(e.start) * 180) / Math.PI);
         g(51, (normAngle(e.end) * 180) / Math.PI);
+        note(e);
+        emitEndings(e, layer);
         return;
       case "polyline":
       case "polygon":
@@ -245,7 +363,10 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
           pts.push(last.prim.t === "seg" ? last.prim.b : endOfArc(last));
         }
         const bulges = path.segs.map((s) => (s.prim.t === "arc" ? Math.tan(s.prim.sweep / 4) * (s.reversed ? -1 : 1) : 0));
-        return polyline(e, layer, pts, path.closed, bulges);
+        polyline(e, layer, pts, path.closed, bulges, () => note(e));
+        if (!path.closed) emitEndings(e, layer);
+        else emitHatch(e, layer);
+        return;
       }
       case "text":
         return text(e, layer, e.position, e.text, e.height * layerScale(e.layerId), e.rotation, e.align);
@@ -264,16 +385,43 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
         return;
       }
       case "dimension": {
+        const name = ensureDim(e);
         const geo = dimGeometry(e, layerScale(e.layerId), style, doc.units);
-        for (const [a, b] of geo.lines) line(e, layer, a, b);
-        for (const a of geo.arcs) polyline(e, layer, flattenPrim({ t: "arc", ...a }, tol).pts, false);
-        for (const poly of geo.arrows) polyline(e, layer, poly, true);
+        g(0, "DIMENSION");
+        g(100, "AcDbEntity");
+        common(e, layer);
+        g(100, "AcDbDimension");
+        g(2, name);
+        g(10, X(e.linePoint.x));
+        g(20, X(e.linePoint.y));
+        g(30, 0);
         if (geo.text) {
-          // Dimension text is anchored at its middle; DXF TEXT at the baseline.
-          const down = 0.28 * geo.text.height;
-          const p = { x: geo.text.pos.x + Math.sin(geo.text.angle) * down, y: geo.text.pos.y - Math.cos(geo.text.angle) * down };
-          text(e, layer, p, geo.text.str, geo.text.height, geo.text.angle, "center");
+          g(11, X(geo.text.pos.x));
+          g(21, X(geo.text.pos.y));
+          g(31, 0);
         }
+        const code = e.dimType === "aligned" ? 1 : e.dimType === "angular" ? 2 : e.dimType === "diameter" ? 3 : e.dimType === "radius" ? 4 : 0;
+        g(70, code);
+        if (e.points[0]) {
+          g(13, X(e.points[0].x));
+          g(23, X(e.points[0].y));
+          g(33, 0);
+        }
+        if (e.points[1]) {
+          g(14, X(e.points[1].x));
+          g(24, X(e.points[1].y));
+          g(34, 0);
+        }
+        if (e.dimType === "horizontal") g(50, 0);
+        if (e.dimType === "vertical") g(50, 90);
+        if (e.textOverride) g(1, e.textOverride);
+        g(100, e.dimType === "aligned" ? "AcDbAlignedDimension" : "AcDbRotatedDimension");
+        g(1001, "TEMARICAD");
+        g(1000, `dim=${e.dimType}`);
+        g(1000, `pts=${e.points.map((p) => `${fmt(X(p.x))},${fmt(X(p.y))}`).join(";")}`);
+        g(1000, `lp=${fmt(X(e.linePoint.x))},${fmt(X(e.linePoint.y))}`);
+        if (e.textOverride !== undefined) g(1000, `text=${e.textOverride}`);
+        if (e.textShift) g(1000, `shift=${fmt(X(e.textShift.x))},${fmt(X(e.textShift.y))}`);
         return;
       }
       default:
@@ -298,8 +446,14 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
             g(51, (normAngle(p.start + p.sweep) * 180) / Math.PI);
           } else if (p.t !== "xline") polyline(e, layer, flattenPrim(p, tol).pts, false);
         }
+        note(e);
+        emitEndings(e, layer);
+        emitHatch(e, layer);
     }
   };
+
+  for (const e of doc.entities) if (e.kind === "dimension") ensureDim(e);
+  for (const s of doc.symbols) for (const e of s.entities) if (e.kind === "dimension") ensureDim(e);
 
   // Blocks (symbols), with their own origin as the base point.
   g(0, "SECTION");
@@ -315,6 +469,19 @@ export function exportDxf(doc: CadDocument, ctx: PrimContext): string {
     g(30, 0);
     g(3, name);
     for (const c of s.entities) emit(c, "0");
+    g(0, "ENDBLK");
+    g(8, "0");
+  }
+  for (const b of dimBlocks) {
+    g(0, "BLOCK");
+    g(8, "0");
+    g(2, b.name);
+    g(70, 1);
+    g(10, 0);
+    g(20, 0);
+    g(30, 0);
+    g(3, b.name);
+    for (const line of b.body) sink.push(line);
     g(0, "ENDBLK");
     g(8, "0");
   }
@@ -387,6 +554,16 @@ class Rec {
   /** Extrusion direction z (−1 = mirrored OCS). */
   get flip() {
     return this.num(230, 1) < 0;
+  }
+  /** TEMARICAD extended-data strings (1001 / 1000). */
+  temari() {
+    const out: string[] = [];
+    let on = false;
+    for (const [c, v] of this.items) {
+      if (c === 1001) on = v.trim().toUpperCase() === "TEMARICAD";
+      else if (on && c === 1000) out.push(v);
+    }
+    return out;
   }
 }
 
@@ -498,11 +675,20 @@ export function importDxf(text: string, opts: { units?: UnitSystem } = {}): DxfI
     }
     const lt = DXF_TO_DASH[rec.str(6).toUpperCase()];
     if (lt) st.dash = lt;
+    const ending = (v: string): v is LineEnding => v === "arrow" || v === "open" || v === "tick" || v === "dot";
+    for (const t of rec.temari()) {
+      const start = t.slice(6);
+      const end = t.slice(4);
+      if (t.startsWith("start=") && ending(start)) st.startEnding = start;
+      if (t.startsWith("end=") && ending(end)) st.endEnding = end;
+      if (t.startsWith("fill=") && t.length > 5) st.fill = t.slice(5);
+    }
     return Object.keys(st).length ? st : undefined;
   };
 
   /** Convert one entity record (and following VERTEX/SEQEND for POLYLINE). */
   const convert = (rec: Rec, layerId: Id, out: Entity[], blocks: Map<string, BlockRec>) => {
+    if (rec.temari().includes("role=ending")) return;
     const base = { id: id(), layerId, ...(style(rec) ? { style: style(rec) } : {}) };
     const f = rec.flip;
     counts[rec.type] = (counts[rec.type] ?? 0) + 1;
@@ -641,8 +827,61 @@ export function importDxf(text: string, opts: { units?: UnitSystem } = {}): DxfI
         out.push({ ...base, kind: "symbol", symbolId: blockId(name), position: P(rec.num(10), rec.num(20), f), rotation: rot, scaleX: sx, scaleY: sy });
         return;
       }
+      case "HATCH": {
+        const tags = rec.temari();
+        const pattern = rec.str(2, "SOLID");
+        const fill = pattern.toUpperCase() === "SOLID" ? "solid" : pattern.toLowerCase();
+        if (tags.includes("role=pattern")) {
+          const prev = out[out.length - 1];
+          if (prev) prev.style = { ...prev.style, fill };
+          return;
+        }
+        const xs = rec.all(10);
+        const ys = rec.all(20);
+        if (xs.length >= 3) {
+          out.push({ ...base, kind: "polygon", points: xs.map((x, i) => P(x, ys[i] ?? 0, f)), style: { ...base.style, fill } });
+          return;
+        }
+        counts[rec.type]--;
+        if (!counts[rec.type]) delete counts[rec.type];
+        skipped.HATCH = (skipped.HATCH ?? 0) + 1;
+        return;
+      }
       case "DIMENSION": {
-        // Its picture lives in an anonymous block, already in world coordinates.
+        const tags = rec.temari();
+        const dimType = tags.find((t) => t.startsWith("dim="))?.slice(4);
+        const known = dimType === "horizontal" || dimType === "vertical" || dimType === "aligned" || dimType === "angular" || dimType === "radius" || dimType === "diameter" || dimType === "centerMark";
+        const pts = tags.find((t) => t.startsWith("pts="))?.slice(4) ?? "";
+        const points = pts
+          .split(";")
+          .filter(Boolean)
+          .map((s) => {
+            const [x, y] = s.split(",").map(Number);
+            return P(x, y, f);
+          });
+        if (known && points.length) {
+          const lp = tags.find((t) => t.startsWith("lp="))?.slice(3) ?? "0,0";
+          const [lx, ly] = lp.split(",").map(Number);
+          const text = tags.find((t) => t.startsWith("text="))?.slice(5);
+          const shift = tags.find((t) => t.startsWith("shift="))?.slice(6);
+          let textShift: { x: number; y: number } | undefined;
+          if (shift) {
+            const [sx, sy] = shift.split(",").map(Number);
+            if (Number.isFinite(sx) && Number.isFinite(sy)) textShift = P(sx, sy, f);
+          }
+          out.push({
+            ...base,
+            kind: "dimension",
+            dimType,
+            points,
+            refs: points.map(() => null),
+            linePoint: P(lx, ly, f),
+            ...(text !== undefined ? { textOverride: text } : {}),
+            ...(textShift ? { textShift } : {}),
+          });
+          return;
+        }
+        // No definition we understand: use the anonymous block's picture.
         const blk = blocks.get(rec.str(2));
         if (blk) for (const r of blk.recs) convert(r, layerId, out, blocks);
         else skipped.DIMENSION = (skipped.DIMENSION ?? 0) + 1;

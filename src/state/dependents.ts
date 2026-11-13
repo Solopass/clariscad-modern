@@ -4,7 +4,7 @@
 import type { CadDocument, DimRef, DimensionEntity, Entity, Id } from "../kernel/types";
 import { handleAt, resolveHandle } from "../kernel/handles";
 import { relocateLinePoint } from "../kernel/dimensions";
-import { type Transform2D, apply } from "../kernel/transform";
+import { type Transform2D, apply, applyDir } from "../kernel/transform";
 import { type Vec2, dist } from "../kernel/vec";
 import type { Grip, Op, Patch } from "./ops";
 
@@ -94,7 +94,10 @@ export function withDependents(doc: CadDocument, patch: Patch): Patch {
     const Ts = basis.refs.map((r) => (r ? replaced.get(r.entityId)?.transform : undefined));
     const oneT = !movedItself && Ts.length > 0 && Ts.every((t) => t && t === Ts[0]) ? Ts[0] : undefined;
     const linePoint = oneT ? apply(oneT, basis.linePoint) : relocateLinePoint(basis, points);
-    const after: DimensionEntity = { ...basis, points, refs, linePoint };
+    // A dragged text offset is in model space. A rigid move of the measured geometry
+    // rotates that offset with it; the link to the geometry stays.
+    const textShift = basis.textShift && oneT ? applyDir(oneT, basis.textShift) : basis.textShift;
+    const after: DimensionEntity = textShift ? { ...basis, points, refs, linePoint, textShift } : { ...basis, points, refs, linePoint };
     extra.push({ op: "replace", before: orig, after });
     merged.add(orig.id);
   }

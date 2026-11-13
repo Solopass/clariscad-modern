@@ -7,6 +7,7 @@ import { normalizeSheet } from "./sheetModel";
 import { EntityIndex } from "../kernel/spatialIndex";
 import { type Patch, applyOps, invert, syncContext } from "./ops";
 import { withDependents } from "./dependents";
+import { editingSymbol, symbolEditOp } from "./symbolEditOps";
 
 export function newDocument(): CadDocument {
   const layer: Layer = { id: "layer-1", name: "Layer 1", visible: true, locked: false, scale: 48 };
@@ -96,10 +97,21 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     commit(p) {
       if (!p.ops.length) return;
       const s = get();
-      // Associated dimensions follow in the same undo step.
-      const full = withDependents(s.doc, p);
-      const next = applyOps(s.doc, s.index, full.ops);
-      const undoStack = [...s.undoStack, full].slice(-UNDO_LIMIT);
+      const session = editingSymbol(s.doc);
+      const ops = session
+        ? p.ops.map((o) => (o.op === "add" && !o.entity.bufferOf ? { ...o, entity: { ...o.entity, bufferOf: session.defId, bufferInst: session.instanceId } } : o))
+        : p.ops;
+      // Associated dimensions follow in the same undo step. An in-place symbol
+      // edit writes the definition in that same step, so every instance updates.
+      const full = withDependents(s.doc, { ...p, ops });
+      let next = applyOps(s.doc, s.index, full.ops);
+      let recorded = full.ops;
+      const extra = symbolEditOp(s.doc, next, p.label);
+      if (extra) {
+        next = applyOps(next, s.index, [extra]);
+        recorded = [...full.ops, extra];
+      }
+      const undoStack = [...s.undoStack, { label: p.label, ops: recorded }].slice(-UNDO_LIMIT);
       set({ doc: next, version: s.version + 1, undoStack, redoStack: [], selection: pruneSelection(s.selection, s.index) });
     },
 

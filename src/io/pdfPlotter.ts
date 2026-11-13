@@ -5,6 +5,7 @@ import type { DisplayList, Mark, PaperSize } from "./plot";
 import { type PdfPage, buildPdf, n, pdfString } from "./pdfWriter";
 import { type PlotStyle, colorFor, penFor } from "./svgExporter";
 import { textWidth } from "../kernel/textMetrics";
+import type { TitleMark } from "../state/titleBlock";
 
 const PT = 72 / 25.4; // points per mm
 /** Refuse plots that would need more sheets than this. */
@@ -16,6 +17,8 @@ export interface PdfOptions extends PlotStyle {
   /** Fit the drawing on one sheet (overrides `scale`). */
   fit?: boolean;
   title?: string;
+  /** Title block in paper millimetres, drawn in the corner of every sheet. */
+  titleBlock?: TitleMark;
 }
 
 export interface PdfResult {
@@ -112,9 +115,27 @@ export function plotPdf(dl: DisplayList, o: PdfOptions): PdfResult {
         const label = `${o.title ?? "Drawing"}${total > 1 ? `  —  sheet ${r * cols + c + 1} of ${total} (row ${r + 1}, column ${c + 1})` : ""}`;
         ops.push("0 g", `BT /F1 7 Tf ${n(margin * PT)} ${n(margin * PT)} Td ${pdfString(label)} Tj ET`);
       }
+      if (o.titleBlock) ops.push(...titleBlockOps(o.titleBlock, sheetW));
       pages.push({ width: sheetW * PT, height: sheetH * PT, ops });
     }
   return { pdf: buildPdf(pages, { title: o.title }), pages: total, scale };
+}
+
+/** Title block in the lower-right of the paper, in the same arrangement as the sheet. */
+function titleBlockOps(block: TitleMark, sheetW: number): string[] {
+  const ox = (sheetW - block.w - 8) * PT;
+  const oy = 8 * PT;
+  const X = (x: number) => ox + x * PT;
+  const Y = (y: number) => oy + y * PT;
+  const ops = ["0 G", "0 g", "0.4 w"];
+  for (const [a, b] of block.lines) ops.push(`${n(X(a.x))} ${n(Y(a.y))} m ${n(X(b.x))} ${n(Y(b.y))} l S`);
+  for (const t of block.texts) {
+    const size = t.h * PT;
+    const w = textWidth(t.str, size);
+    const shift = t.align === "center" ? -w / 2 : 0;
+    ops.push(`BT /F1 ${n(size)} Tf 1 0 0 1 ${n(X(t.pos.x))} ${n(Y(t.pos.y))} Tm ${n(shift)} 0 Td ${pdfString(t.str)} Tj ET`);
+  }
+  return ops;
 }
 
 function markOps(m: Mark, X: (x: number) => number, Y: (y: number) => number, scale: number, o: PdfOptions): string[] {

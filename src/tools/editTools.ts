@@ -7,7 +7,9 @@ import { handleAt } from "../kernel/handles";
 import { breakForCrossing, extendToBar, fitOpening, wallParam } from "../kernel/wallSolver";
 import { type Vec2, add, dist, normalize, perp, scale, sub } from "../kernel/vec";
 import { editPatch, replacePatch } from "../state/ops";
+import { applyMatch } from "../state/match";
 import { findSymbol, placeSymbolPatch } from "../state/symbols";
+import { useDocumentStore } from "../state/useDocumentStore";
 import type { BuildCtx, MethodDef, Shape, ToolDef } from "./defs";
 
 /** Strip id/layer so an entity can be shown as a preview shape. */
@@ -517,5 +519,62 @@ const CLEANUP: ToolDef = {
   ],
 };
 
-export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, CLEANUP, SYMBOL, TEXT];
+const matchFlags = (s: BuildCtx["settings"]) => ({
+  pen: s.matchPen !== false,
+  dash: s.matchDash !== false,
+  endings: s.matchEndings !== false,
+  fill: s.matchFill !== false,
+  layer: s.matchLayer !== false,
+});
+
+const MATCH: ToolDef = {
+  id: "match",
+  label: "Match Properties",
+  key: "n",
+  methods: [
+    {
+      id: "selection",
+      label: "Onto Selection",
+      points: 1,
+      rawPicks: [0],
+      prompts: ["Click the object to copy from. Checked properties land on the selection."],
+      edit: ([p], ctx) => {
+        const src = ctx.entityAt(p);
+        if (!src) return null;
+        const { doc, selection } = useDocumentStore.getState();
+        const pairs: [Entity, Entity][] = [];
+        for (const e of doc.entities) {
+          if (!selection.has(e.id)) continue;
+          const after = applyMatch(src, e, matchFlags(ctx.settings));
+          if (after) pairs.push([e, after]);
+        }
+        return pairs.length ? replacePatch("Match Properties", pairs) : null;
+      },
+    },
+    {
+      id: "pick",
+      label: "Pick Targets",
+      points: "many",
+      min: 2,
+      rawPicks: [-1],
+      prompts: ["Click the object to copy from", "Click objects to change, then Enter"],
+      edit: (pts, ctx) => {
+        const src = ctx.entityAt(pts[0]);
+        if (!src) return null;
+        const pairs: [Entity, Entity][] = [];
+        const seen = new Set<string>();
+        for (const p of pts.slice(1)) {
+          const e = ctx.entityAt(p);
+          if (!e || seen.has(e.id)) continue;
+          seen.add(e.id);
+          const after = applyMatch(src, e, matchFlags(ctx.settings));
+          if (after) pairs.push([e, after]);
+        }
+        return pairs.length ? replacePatch("Match Properties", pairs) : null;
+      },
+    },
+  ],
+};
+
+export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, CLEANUP, SYMBOL, TEXT, MATCH];
 
