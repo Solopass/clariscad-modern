@@ -26,12 +26,50 @@ Spec and data model: `ARCHITECTURE.md`.
 - [x] Architect review fixes: polyline bulges, mirrored/non-uniform symbols, NURBS splines, partial ellipses,
       precise far-from-origin circle3P, spaced-dash parsing, empty vs unbounded index entries, prim cache, `CadDocument`
 
-### Milestone 2: workspace (next)
+### Milestone 2: workspace (in progress)
 
-- [ ] Camera and adaptive grid
-- [ ] Tools palette, Methods bar, Modifiers palette, Coordinates HUD (Tab-to-type)
-- [ ] Creation tools with rubber band and snap badges
-- [ ] Command stack (undo/redo)
+Goal from the owner: core features with modern improvements, but it must *feel* like the classic Mac CAD program it is modelled on.
+The owner will supply the original program as a reference soon; until then the look is a classic
+Mac (System 7-era) style: white canvas, 1-px black lines, floating palettes with striped title
+bars, small monochrome icons, a tool palette whose tools pop out their Methods.
+
+Design:
+- **Store** (`src/state/`): Zustand. `useDocumentStore` holds the `CadDocument`, selection and an
+  `EntityIndex` kept in step with every change. All edits go through `commit(patch)`; a patch is
+  `{label, added, removed, changed: [before, after]}`, so undo/redo inverts it (no snapshots).
+  `useToolStore` holds the active tool, its method, modifier toggles and tool settings.
+- **Tools** (`src/tools/`): plain TS objects, not React. A tool gets snapped pointer events, keys and
+  typed HUD values, and returns preview entities + guide marks; it commits through the store.
+  One file per tool family. Esc cancels, Enter/double-click finishes multi-click tools.
+- **Viewport** (`src/canvas/`): camera with y-up world (mm) → screen, cursor-centred wheel zoom,
+  middle-drag / space-drag pan, zoom-to-fit. Three stacked canvases: grid, static geometry
+  (redrawn on document/camera change), overlay (rubber band, selection, snap badge, guides; per
+  mouse move). HiDPI aware.
+- **UI** (`src/components/`): menu bar (File, Edit, View, Arrange placeholders), floating Tools palette,
+  Methods bar, Modifiers palette, Coordinates HUD at the bottom (X, Y, ΔX, ΔY, length, angle;
+  Tab jumps into the fields, typed values feed the active tool through the units parser).
+
+Tools in M2: Select (click, shift-add, marquee inside L→R / crossing R→L, drag to move, Delete),
+Line (2-point, continuous, polar), Double Line (center/left/right, width), Rectangle (corner,
+center, 3-point, rounded), Circle (center-radius, diameter, 3-point), Arc (center-start-end,
+3-point, start-end-radius), Ellipse (box, center-axes), Polygon (center-vertex, center-side, edge),
+Spline (control points, interpolated, freehand), Guides (horizontal, vertical, angled, 2-point).
+Walls, trim/fillet, dimensions and the select tool's lasso/vertex reshape come in M3.
+
+- [x] Command stack (typed ops with draw-order indices; one `applyOps` for commit/undo/redo/load; entities frozen in dev)
+- [x] Camera (float64 world→screen, cursor-centred zoom, middle/space-drag pan, trackpad pan, fit) and grid on snap multiples
+- [x] Tools palette (hold or right-click for Methods), Methods bar with method settings, Modifiers palette, Coordinates HUD (Tab-to-type, unit expressions)
+- [x] All M2 creation tools with rubber band, snap badge, alignment guides; press-drag-release or click-click
+- [x] Select: click, Shift-toggle, marquee inside/crossing, drag-move as one undo step, Delete, arrow nudge
+- [x] Menus: File (New), Edit (Undo/Redo with labels, Clear, Select All), View (zoom, grid, line weights), Layout (units), Window
+
+Keys: tool letters V L D R C A E G S U (press again to cycle Methods), Esc cancels / back to Select,
+Enter or right-click finishes, Backspace removes the last point, C closes a continuous line, Shift = 45° lock,
+F fits, Ctrl+Z / Ctrl+Y / Ctrl+A, Space-drag pans, Tab jumps to the HUD.
+
+Not yet: one-shot modifier hotkeys mid-command, parallel-offset and perpendicular guides,
+arc tangent-to-entity, lasso/polygon select and vertex reshape (M3), layer UI (M4).
+Waiting on the owner's reference copy of the original program to match the look and behaviour.
 
 ### Milestones 3–5
 

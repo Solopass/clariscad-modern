@@ -1,11 +1,23 @@
-// Placeholder shell. The workspace UI (viewport, palettes, HUD) is Milestone 2.
+import { useState } from "react";
+import { MenuBar } from "./components/MenuBar";
+import { MethodsBar } from "./components/MethodsBar";
+import { Viewport } from "./components/Viewport";
+import { ToolsPalette } from "./components/ToolsPalette";
+import { ModifiersPalette } from "./components/ModifiersPalette";
+import { CoordinatesHUD } from "./components/CoordinatesHUD";
+
 export default function App() {
+  const [modifiersOpen, setModifiersOpen] = useState(true);
   return (
-    <main className="flex h-full items-center justify-center bg-neutral-100 text-neutral-700">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">TemariCad</h1>
-        <p className="mt-2 text-sm">Geometry kernel in place. Drafting workspace arrives in Milestone 2.</p>
+    <div className="flex h-full flex-col">
+      <MenuBar modifiersOpen={modifiersOpen} setModifiersOpen={setModifiersOpen} />
+      <MethodsBar />
+      <div className="relative min-h-0 flex-1">
+        <Viewport />
+        <ToolsPalette />
+        {modifiersOpen && <ModifiersPalette onClose={() => setModifiersOpen(false)} />}
       </div>
-    </main>
+      <CoordinatesHUD />
+    </div>
   );
 }
