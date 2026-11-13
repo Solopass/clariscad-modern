@@ -3,6 +3,8 @@
 import { toolDef } from "../tools/defs";
 import { useToolStore } from "../state/useToolStore";
 import { LengthField } from "./LengthField";
+import { useDocumentStore } from "../state/useDocumentStore";
+import { BUILTIN_SYMBOLS } from "../kernel/builtinSymbols";
 import { ToolIcon } from "./Icons";
 
 function Choice({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange(v: string): void }) {
@@ -20,7 +22,14 @@ function Choice({ label, value, options, onChange }: { label: string; value: str
   );
 }
 
+function symbolChoices(): [string, string][] {
+  const own = useDocumentStore.getState().doc.symbols;
+  const seen = new Set(own.map((s) => s.id));
+  return [...own, ...BUILTIN_SYMBOLS.filter((b) => !seen.has(b.id))].map((s) => [s.id, s.name]);
+}
+
 export function MethodsBar() {
+  useDocumentStore((s) => s.doc.symbols); // re-render when symbols change
   const tool = useToolStore((s) => s.tool);
   const method = useToolStore((s) => s.methods[s.tool]);
   const settings = useToolStore((s) => s.settings);
@@ -97,6 +106,18 @@ export function MethodsBar() {
             ]}
             onChange={(v) => set("trimMode", v as "both" | "first" | "none")}
           />
+        )}
+        {tool === "symbol" && (
+          <>
+            <Choice
+              label="Symbol"
+              value={settings.symbolId}
+              options={[...symbolChoices()]}
+              onChange={(v) => set("symbolId", v)}
+            />
+            <LengthField label="Scale" kind="count" width={40} value={settings.symbolScale} min={0.01} onChange={(v) => set("symbolScale", v)} />
+            <LengthField label="Rotation" kind="angle" width={60} value={settings.symbolRotation} onChange={(v) => set("symbolRotation", v)} />
+          </>
         )}
         {tool === "fillet" && <LengthField label="Radius" value={settings.filletRadius} min={0} onChange={(v) => set("filletRadius", v)} />}
         {tool === "chamfer" && (

@@ -4,9 +4,10 @@ import type { DimRef, DimensionType, Entity, Id, WallEntity } from "../kernel/ty
 import { entityBBox, primsOf, closestOnPrim } from "../kernel/prims";
 import { chamfer, extendTo, fillet, offsetEntity, splitAt, trimAt, trimPiece, type EditResult } from "../kernel/booleanOps";
 import { handleAt } from "../kernel/handles";
-import { wallParam } from "../kernel/wallSolver";
+import { fitOpening, wallParam } from "../kernel/wallSolver";
 import { type Vec2, add, dist, normalize, perp, scale, sub } from "../kernel/vec";
 import { editPatch, replacePatch } from "../state/ops";
+import { findSymbol, placeSymbolPatch } from "../state/symbols";
 import type { BuildCtx, MethodDef, Shape, ToolDef } from "./defs";
 
 /** Strip id/layer so an entity can be shown as a preview shape. */
@@ -92,9 +93,7 @@ const WALL: ToolDef = {
 
 /** Opening centre along the wall, kept fully inside it; null if it does not fit. */
 function openingAt(w: WallEntity, p: Vec2, width: number): number | null {
-  const len = dist(w.a, w.b);
-  if (width >= len) return null;
-  return Math.min(len - width / 2, Math.max(width / 2, wallParam(w, p)));
+  return fitOpening(w, wallParam(w, p), width);
 }
 
 // ---------------------------------------------------------------- dimensions
@@ -401,5 +400,39 @@ const CHAMFER: ToolDef = {
   ],
 };
 
-export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER];
+const SYMBOL: ToolDef = {
+  id: "symbol",
+  label: "Symbol",
+  key: "y",
+  methods: [
+    {
+      id: "place",
+      label: "Place Symbol",
+      points: 1,
+      prompts: ["Click to place the symbol (doors and windows: click a wall; the click side sets the swing)"],
+      preview: ([p], ctx) => {
+        const s = ctx.settings;
+        const def = findSymbol(ctx.doc(), s.symbolId);
+        if (!def) return {};
+        const hit = ctx.entityAt(p);
+        if (def.opening && hit?.kind === "wall") {
+          const patch = placeSymbolPatch(ctx.doc(), s.symbolId, p, s.symbolScale, s.symbolRotation, hit, "");
+          const after = patch?.ops.find((o) => o.op === "replace");
+          // Show the wall with its new opening (drawn as a plain band plus the symbol frame jambs).
+          return after && after.op === "replace" ? { highlight: [shapeOf(after.after)] } : {};
+        }
+        return { shapes: [{ kind: "symbol", symbolId: def.id, position: p, rotation: (s.symbolRotation * Math.PI) / 180, scaleX: s.symbolScale, scaleY: s.symbolScale }] };
+      },
+      edit: ([p], ctx) => {
+        const s = ctx.settings;
+        const def = findSymbol(ctx.doc(), s.symbolId);
+        if (!def) return null;
+        const hit = ctx.entityAt(p);
+        return placeSymbolPatch(ctx.doc(), s.symbolId, p, s.symbolScale, s.symbolRotation, def.opening && hit?.kind === "wall" ? hit : null, ctx.doc().activeLayerId);
+      },
+    },
+  ],
+};
+
+export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, SYMBOL];
 

@@ -2,10 +2,11 @@
 // typed ops. applyOps() is the only function that changes a document; it
 // updates the CadDocument (immutably) and the EntityIndex together, and is
 // used for commit, undo, redo and file load alike.
-import type { CadDocument, Entity, Id, Layer, SymbolDef, WallEntity } from "../kernel/types";
+import type { CadDocument, DraftingStandard, Entity, Id, Layer, SymbolDef, UnitSystem, WallEntity } from "../kernel/types";
 import type { EntityIndex } from "../kernel/spatialIndex";
-import type { Prim } from "../kernel/prims";
+import type { WallSolveEntry } from "../kernel/prims";
 import { type Transform2D, invert as invertT } from "../kernel/transform";
+import { BUILTIN_SYMBOLS } from "../kernel/builtinSymbols";
 import { solveWalls } from "../kernel/wallSolver";
 import { STANDARDS, dimGeometry, geometryPrims } from "../kernel/dimensions";
 
@@ -21,9 +22,18 @@ export type Op =
    */
   | { op: "replace"; before: Entity; after: Entity; transform?: Transform2D; grip?: Grip }
   | { op: "reorder"; before: Id[]; after: Id[] }
-  | { op: "layer"; before: Layer | null; after: Layer | null }
-  | { op: "symbolDef"; before: SymbolDef | null; after: SymbolDef | null }
-  | { op: "activeLayer"; before: Id; after: Id };
+  /** Add (before null), remove (after null) or change a layer; `index` is its position in the list. */
+  | { op: "layer"; before: Layer | null; after: Layer | null; index: number }
+  | { op: "layerOrder"; before: Id[]; after: Id[] }
+  | { op: "symbolDef"; before: SymbolDef | null; after: SymbolDef | null; index: number }
+  | { op: "activeLayer"; before: Id; after: Id }
+  /** Document-wide settings (display units, drafting standard). */
+  | { op: "docProps"; before: DocProps; after: DocProps };
+
+export interface DocProps {
+  units?: UnitSystem;
+  standard?: DraftingStandard;
+}
 
 export interface Patch {
   label: string;
@@ -40,8 +50,10 @@ function invertOp(o: Op): Op {
       return { op: "replace", before: o.after, after: o.before, ...(o.transform ? { transform: invertT(o.transform) } : {}), ...(o.grip ? { grip: o.grip } : {}) };
     case "reorder":
     case "layer":
+    case "layerOrder":
     case "symbolDef":
     case "activeLayer":
+    case "docProps":
       return { ...o, before: o.after, after: o.before } as Op;
   }
 }
@@ -65,6 +77,7 @@ export function applyOps(doc: CadDocument, index: EntityIndex, ops: Op[]): CadDo
   let layers = doc.layers;
   let symbols = doc.symbols;
   let activeLayerId = doc.activeLayerId;
+  let props: DocProps = { units: doc.units, standard: doc.standard };
   const touchedSymbols: Id[] = [];
   let wallsTouched = false;
   let layersTouched = false;
@@ -113,26 +126,32 @@ export function applyOps(doc: CadDocument, index: EntityIndex, ops: Op[]): CadDo
         layersTouched = true;
         const id = (o.after ?? o.before)!.id;
         layers = layers.filter((l) => l.id !== id);
-        if (o.after) {
-          const at = doc.layers.findIndex((l) => l.id === id);
-          layers.splice(at < 0 ? layers.length : at, 0, o.after);
-        }
+        if (o.after) layers.splice(Math.min(o.index, layers.length), 0, o.after);
+        break;
+      }
+      case "layerOrder": {
+        const byId = new Map(layers.map((l) => [l.id, l]));
+        layers = o.after.map((id) => byId.get(id)!).filter(Boolean);
         break;
       }
       case "symbolDef": {
         const id = (o.after ?? o.before)!.id;
         symbols = symbols.filter((s) => s.id !== id);
-        if (o.after) symbols.push(o.after);
+        if (o.after) symbols.splice(Math.min(o.index, symbols.length), 0, o.after);
         touchedSymbols.push(id);
         break;
       }
+      case "docProps":
+        props = { ...props, ...o.after };
+        layersTouched = true;
+        break;
       case "activeLayer":
         activeLayerId = o.after;
         break;
     }
   }
 
-  const next = { ...doc, entities, layers, symbols, activeLayerId };
+  const next = { ...doc, entities, layers, symbols, activeLayerId, units: props.units!, standard: props.standard! };
   syncContext(next, index, { symbols: touchedSymbols, walls: wallsTouched, dims: layersTouched });
   return next;
 }
@@ -146,10 +165,21 @@ export function applyOps(doc: CadDocument, index: EntityIndex, ops: Op[]): CadDo
  */
 export function syncContext(doc: CadDocument, index: EntityIndex, what: { symbols?: Id[] | "all"; walls?: boolean; dims?: boolean }) {
   const ctx = (index.ctx ??= {});
+  let symbolsChanged: Set<Id> | null = null;
   if (what.symbols === "all" || (what.symbols && what.symbols.length)) {
-    ctx.symbols = new Map(doc.symbols.map((s) => [s.id, s]));
-    const ids = what.symbols === "all" ? doc.symbols.map((s) => s.id) : what.symbols;
-    for (const id of ids) index.reindexSymbol(id);
+    ctx.symbols = new Map([...BUILTIN_SYMBOLS, ...doc.symbols].map((s) => [s.id, s]));
+    // A change reaches every symbol that nests it, at any depth.
+    const affected = new Set(what.symbols === "all" ? doc.symbols.map((s) => s.id) : what.symbols);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const def of doc.symbols)
+        if (!affected.has(def.id) && def.entities.some((c) => c.kind === "symbol" && affected.has(c.symbolId))) {
+          affected.add(def.id);
+          grew = true;
+        }
+    }
+    for (const id of affected) index.reindexSymbol(id);
+    symbolsChanged = affected;
   }
   if (what.dims || !ctx.dimPrims) {
     const scales = new Map(doc.layers.map((l) => [l.id, l.scale]));
@@ -158,16 +188,19 @@ export function syncContext(doc: CadDocument, index: EntityIndex, what: { symbol
     ctx.dimPrims = (e) => geometryPrims(dimGeometry(e, scales.get(e.layerId) ?? 1, style, units));
     if (what.dims) for (const e of doc.entities) if (e.kind === "dimension") index.upsert(e);
   }
+  const walls = doc.entities.filter((e): e is WallEntity => e.kind === "wall");
   if (what.walls) {
-    const walls = doc.entities.filter((e): e is WallEntity => e.kind === "wall");
     const solved = solveWalls(walls);
-    const map = new Map<Id, { entity: Entity; prims: Prim[] }>();
+    const map = new Map<Id, WallSolveEntry>();
     for (const w of walls) {
-      const prims = solved.get(w.id);
-      if (prims) map.set(w.id, { entity: w, prims });
+      const s = solved.get(w.id);
+      if (s) map.set(w.id, { entity: w, ...s });
     }
     ctx.wallPrims = map;
   }
+  // Wall boxes depend on the solve (mitres) and on door/window symbols: re-index after both.
+  if (what.walls) for (const w of walls) index.upsert(w);
+  else if (symbolsChanged) for (const w of walls) if (w.openings?.some((o) => o.symbolId && symbolsChanged!.has(o.symbolId))) index.upsert(w);
 }
 
 // ---------------------------------------------------------------- patch builders

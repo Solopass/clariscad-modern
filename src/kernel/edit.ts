@@ -63,8 +63,9 @@ export function transformEntity(e: Entity, T: Transform2D): Entity {
         b: m(e.b),
         thickness: e.thickness * s,
         justify: mirror ? flipJustify(e.justify) : e.justify,
-        // A mirror keeps a→b order, so distances along the wall are unchanged apart from scale.
-        openings: e.openings?.map((o) => ({ ...o, at: o.at * s, width: o.width * s })),
+        // A mirror keeps a→b order, so distances along the wall are unchanged apart from scale,
+        // but what was on the left of the wall is now on the right: doors swing the other way.
+        openings: e.openings?.map((o) => ({ ...o, at: o.at * s, width: o.width * s, ...(mirror ? { swingFlip: !o.swingFlip } : {}) })),
       };
     case "polyline":
       return { ...e, points: e.points.map(m), bulges: mirror && e.bulges ? e.bulges.map((b) => -b) : e.bulges };

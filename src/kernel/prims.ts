@@ -1,7 +1,7 @@
 // Every entity is broken into a few geometric primitives. Intersections,
 // snapping, hit-testing and bounding boxes all work on primitives, so new
 // entity kinds only need a toPrims() case.
-import type { BBox, Entity, Id, SymbolDef } from "./types";
+import type { BBox, Entity, Id, SymbolDef, WallOpening } from "./types";
 import { type Transform2D, apply, applyDir, multiply, rotation, scaling, translation } from "./transform";
 import {
   type Vec2,
@@ -63,6 +63,17 @@ export interface CurvePrim {
 
 export type Prim = SegPrim | ArcPrim | XLinePrim | EllPrim | CurvePrim;
 
+/** One wall's solved geometry. */
+export interface WallSolveEntry {
+  entity: Entity;
+  /** Faces, caps and jambs. */
+  prims: Prim[];
+  /** Closed outlines of the wall's solid parts (for fills); openings excluded. */
+  fill: Vec2[][];
+  /** Where each opening's symbol goes: maps symbol space (opening centred on the origin, along +x, swing +y) to the drawing. */
+  frames: { opening: WallOpening; T: Transform2D }[];
+}
+
 /**
  * Shared, document-level inputs to geometry. Owned by the EntityIndex and
  * updated field by field (never replaced wholesale) as the document changes.
@@ -70,7 +81,7 @@ export type Prim = SegPrim | ArcPrim | XLinePrim | EllPrim | CurvePrim;
 export interface PrimContext {
   symbols?: Map<Id, SymbolDef> | Record<Id, SymbolDef>;
   /** Wall solver output. Used only while `entity` is the exact object being drawn. */
-  wallPrims?: Map<Id, { entity: Entity; prims: Prim[] }>;
+  wallPrims?: Map<Id, WallSolveEntry>;
   /** Dimension geometry builder (depends on layer scale, drafting standard and units). */
   dimPrims?: (e: Extract<Entity, { kind: "dimension" }>) => Prim[];
 }
@@ -345,9 +356,16 @@ export function entityBBox(e: Entity, ctx?: PrimContext): BBox | null {
     grow(b, e.linePoint);
     out = b.minX <= b.maxX ? b : null;
   }
+  if (e.kind === "wall" && ctx?.wallPrims?.get(e.id)?.entity === e) {
+    // Solved: the real outline, including mitres and door swings.
+    for (const p of toPrims(e, ctx)) {
+      const b = primBBox(p);
+      if (b) out = out ? unionBox(out, b) : b;
+    }
+    return out;
+  }
   if (e.kind === "wall") {
-    // Mitred corners can reach past the raw band by up to the thickness; use a padded box
-    // so the solver's output never leaves the indexed box.
+    // Unsolved: a padded box (mitres reach at most 2× the thickness past the band).
     const b = emptyBox();
     for (const p of bandPrims(e.a, e.b, e.thickness, e.justify, true, true)) {
       grow(b, p.a);
@@ -651,8 +669,18 @@ export function toPrims(e: Entity, ctx?: PrimContext, depth = 0): Prim[] {
       // Solved geometry (junctions, openings) when the solver has seen this exact object;
       // otherwise (previews, drags, no solver) a plain capped band.
       const solved = ctx?.wallPrims?.get(e.id);
-      if (solved && solved.entity === e) return solved.prims;
-      return bandPrims(e.a, e.b, e.thickness, e.justify, true, true);
+      if (!solved || solved.entity !== e) return bandPrims(e.a, e.b, e.thickness, e.justify, true, true);
+      if (!solved.frames.length) return solved.prims;
+      // Door and window symbols drawn in their openings, sized to the opening.
+      const out = solved.prims.slice();
+      for (const { opening, T } of solved.frames) {
+        const def = opening.symbolId ? symbolLookup(ctx, opening.symbolId) : undefined;
+        if (!def || depth > 16) continue;
+        const k = def.opening?.width ? opening.width / def.opening.width : 1;
+        const M = multiply(T, multiply(scaling(k), translation(-def.origin.x, -def.origin.y)));
+        for (const child of def.entities) for (const p of toPrims(child, ctx, depth + 1)) out.push(transformPrim(p, M));
+      }
+      return out;
     }
     case "rect":
       return rectPrims(e.center, e.width, e.height, e.rotation, e.cornerRadius);

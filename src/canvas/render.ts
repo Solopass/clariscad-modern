@@ -3,7 +3,9 @@
 import type { DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
 import { type DimStyle, dimGeometry } from "../kernel/dimensions";
 import { handlesOf } from "../kernel/handles";
-import { type Prim, type PrimContext, flattenPrim, primsOf } from "../kernel/prims";
+import { entityHatch, fillRings, patternById } from "../kernel/hatch";
+import { type Transform2D, apply, multiply } from "../kernel/transform";
+import { type Prim, type PrimContext, flattenPrim, primsOf, symbolTransform } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
 import { type Camera, viewBox, worldToScreen } from "./camera";
 
@@ -206,7 +208,85 @@ export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<E
   for (const e of entities) {
     const layer = dc.layers.get(e.layerId);
     if (layer && !layer.visible) continue;
+    if (e.style?.fill) fillEntity(ctx, e, dc);
+    if (e.kind === "symbol") fillSymbol(ctx, e, dc);
     strokeEntity(ctx, e, dc);
+  }
+}
+
+/** Fills of the parts of a symbol (solid fills; patterns at the instance's layer scale). */
+function fillSymbol(ctx: CanvasRenderingContext2D, inst: Extract<Entity, { kind: "symbol" }>, dc: DrawContext, parent?: Transform2D, layerId = inst.layerId, depth = 0) {
+  const defs = dc.symbols.symbols;
+  const def = defs instanceof Map ? defs.get(inst.symbolId) : defs?.[inst.symbolId];
+  if (!def || depth > 8) return;
+  const own = symbolTransform(def.origin, inst.position, inst.rotation, inst.scaleX, inst.scaleY);
+  // Compose with the parent placement exactly as toPrims does.
+  const T = parent ? multiply(parent, own) : own;
+  for (const child of def.entities) {
+    if (child.kind === "symbol") {
+      fillSymbol(ctx, child, dc, T, layerId, depth + 1);
+      continue;
+    }
+    const pat = patternById(child.style?.fill);
+    const rings = pat && fillRings(child);
+    if (!pat || !rings) continue;
+    const mapped = rings.map((r) => r.map((p) => apply(T, p)));
+    const ink = child.style?.color ?? dc.layers.get(layerId)?.color ?? dc.theme.ink;
+    ctx.beginPath();
+    for (const r of mapped)
+      r.forEach((p, i) => {
+        const s = worldToScreen(dc.cam, p);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      });
+    ctx.closePath();
+    ctx.fillStyle = pat.solid ? (pat.solid === "#000000" ? ink : pat.solid) : "#c8c8c8";
+    ctx.fill("evenodd");
+  }
+}
+
+/** Fill pattern or solid fill inside a closed entity, under its outline. */
+export function fillEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawContext) {
+  const pat = patternById(e.style?.fill);
+  if (!pat) return;
+  const layer = dc.layers.get(e.layerId);
+  const k = (layer?.scale ?? 1) * (e.style?.fillScale ?? 1);
+  const { rings, result } = entityHatch(e, pat.id, k, dc.symbols);
+  if (!rings) return;
+  const path = () => {
+    ctx.beginPath();
+    for (const r of rings)
+      r.forEach((p, i) => {
+        const s = worldToScreen(dc.cam, p);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      });
+    ctx.closePath();
+  };
+  const ink = e.style?.color ?? layer?.color ?? dc.theme.ink;
+  const finest = pat.families ? Math.min(...pat.families.map((f) => f.spacing)) * k * dc.cam.zoom : Infinity;
+  if (pat.solid || !result || result.dense || finest < 1.5) {
+    path();
+    ctx.fillStyle = pat.solid ? (pat.solid === "#000000" ? ink : pat.solid) : "#c8c8c8";
+    ctx.fill("evenodd");
+    return;
+  }
+  // Lines closer than ~1.5 px read as a tint; draw them as one.
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 0.75;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for (const [a, b] of result.segs) {
+    const p = worldToScreen(dc.cam, a);
+    const q = worldToScreen(dc.cam, b);
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(q.x, q.y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = ink;
+  for (const d of result.dots) {
+    const s = worldToScreen(dc.cam, d);
+    ctx.fillRect(s.x - 0.75, s.y - 0.75, 1.5, 1.5);
   }
 }
 

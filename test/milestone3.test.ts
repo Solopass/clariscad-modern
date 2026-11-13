@@ -261,13 +261,13 @@ describe("wall solver", () => {
     segs(prims).some((s) => (dist(s.a, a) < 1e-9 && dist(s.b, b) < 1e-9) || (dist(s.a, b) < 1e-9 && dist(s.b, a) < 1e-9));
 
   test("lone wall: two faces and two caps", () => {
-    const p = solveWalls([W("a", 0, 0, 10, 0)]).get("a")!;
+    const p = solveWalls([W("a", 0, 0, 10, 0)]).get("a")!.prims;
     expect(p.length).toBe(4);
   });
 
   test("L corner mitres and drops caps at the joint", () => {
     const out = solveWalls([W("a", 0, 0, 10, 0), W("b", 0, 0, 0, 10)]);
-    const a = out.get("a")!;
+    const a = out.get("a")!.prims;
     // Outer face runs to the outer corner (-1,-1); inner face starts at the inner corner (1,1).
     expect(hasSeg(a, { x: -1, y: -1 }, { x: 10, y: -1 })).toBe(true);
     expect(hasSeg(a, { x: 1, y: 1 }, { x: 10, y: 1 })).toBe(true);
@@ -276,9 +276,9 @@ describe("wall solver", () => {
 
   test("T join: the stem stops at the near face, which gets a gap", () => {
     const out = solveWalls([W("base", 0, 0, 20, 0), W("stem", 10, 0, 10, 10)]);
-    const stem = out.get("stem")!;
+    const stem = out.get("stem")!.prims;
     expect(hasSeg(stem, { x: 9, y: 1 }, { x: 9, y: 10 })).toBe(true);
-    const base = out.get("base")!;
+    const base = out.get("base")!.prims;
     expect(hasSeg(base, { x: 0, y: 1 }, { x: 9, y: 1 })).toBe(true);
     expect(hasSeg(base, { x: 11, y: 1 }, { x: 20, y: 1 })).toBe(true);
     expect(hasSeg(base, { x: 0, y: -1 }, { x: 20, y: -1 })).toBe(true); // far face untouched
@@ -286,14 +286,14 @@ describe("wall solver", () => {
 
   test("X crossing: both walls broken inside each other", () => {
     const out = solveWalls([W("h", -10, 0, 10, 0), W("v", 0, -10, 0, 10)]);
-    const h = out.get("h")!;
+    const h = out.get("h")!.prims;
     expect(hasSeg(h, { x: -10, y: 1 }, { x: -1, y: 1 })).toBe(true);
     expect(hasSeg(h, { x: 1, y: 1 }, { x: 10, y: 1 })).toBe(true);
   });
 
   test("opening: faces broken with jambs", () => {
     const w = { ...W("a", 0, 0, 10, 0), openings: [{ id: "o", at: 5, width: 2 }] };
-    const p = solveWalls([w]).get("a")!;
+    const p = solveWalls([w]).get("a")!.prims;
     expect(hasSeg(p, { x: 0, y: 1 }, { x: 4, y: 1 })).toBe(true);
     expect(hasSeg(p, { x: 6, y: 1 }, { x: 10, y: 1 })).toBe(true);
     expect(hasSeg(p, { x: 4, y: -1 }, { x: 4, y: 1 })).toBe(true);
@@ -615,7 +615,7 @@ describe("review fixes (M3 final review)", () => {
     const W = (id: string, b: { x: number; y: number }) => ({ id, layerId: "L", kind: "wall", a: { x: 0, y: 0 }, b, thickness: 1, justify: "center" }) as Extract<Entity, { kind: "wall" }>;
     const ang = (10 * Math.PI) / 180;
     const out = solveWalls([W("a", { x: 20, y: 0 }), W("b", { x: 20 * Math.cos(ang), y: 20 * Math.sin(ang) })]);
-    for (const prims of out.values())
+    for (const { prims } of out.values())
       for (const p of prims) if (p.t === "seg") for (const q of [p.a, p.b]) expect(dist(q, { x: 0, y: 0 })).toBeLessThan(25);
   });
 

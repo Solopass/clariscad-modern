@@ -22,7 +22,8 @@ export type ToolId =
   | "split"
   | "offset"
   | "fillet"
-  | "chamfer";
+  | "chamfer"
+  | "symbol";
 
 export type TrimModeSetting = "both" | "first" | "none";
 
@@ -54,6 +55,14 @@ export interface ToolSettings {
   chamferAngle: number;
   chamferByAngle: boolean;
   trimMode: TrimModeSetting;
+  /** Fill pattern for new closed shapes ("" = none). */
+  fill: string;
+  /** Colour for new entities ("" = by layer). */
+  color: string;
+  /** Symbol tool: which symbol, its scale and rotation (degrees). */
+  symbolId: string;
+  symbolScale: number;
+  symbolRotation: number;
 }
 
 export interface ToolState {
@@ -87,6 +96,7 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   offset: "offset",
   fillet: "fillet",
   chamfer: "chamfer",
+  symbol: "place",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -129,6 +139,11 @@ const DEFAULT_SETTINGS: ToolSettings = {
   chamferAngle: 45,
   chamferByAngle: false,
   trimMode: "both",
+  fill: "",
+  color: "",
+  symbolId: "builtin:door-single",
+  symbolScale: 1,
+  symbolRotation: 0,
 };
 
 const KEY = "temaricad.tools.v1";

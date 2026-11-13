@@ -74,6 +74,18 @@ export interface Tool {
 }
 
 const DRAG_PX = 4;
+
+/** Kinds that can take a fill pattern. */
+const FILLABLE = new Set(["rect", "circle", "ellipse", "polygon", "wall"]);
+
+/** Style for a new entity from the current attribute defaults (only the fields that differ from plain). */
+function newStyle(s: ToolSettings, kind: string): Entity["style"] {
+  const st: NonNullable<Entity["style"]> = { penWeight: s.penWeight };
+  if (s.dash && s.dash !== "solid") st.dash = s.dash;
+  if (s.color) st.color = s.color;
+  if (s.fill && FILLABLE.has(kind)) st.fill = s.fill;
+  return st;
+}
 const empty = (): Overlay => ({ shapes: [], highlight: [], points: [] });
 
 function layerOk(doc: CadDocument) {
@@ -187,7 +199,7 @@ export class DrawTool implements Tool {
           ...shape,
           id: this.ctx.newId(),
           layerId: doc.activeLayerId,
-          ...(shape.kind === "guide" || shape.kind === "dimension" ? {} : { style: { penWeight: s.penWeight, dash: s.dash === "solid" ? undefined : s.dash } }),
+          ...(shape.kind === "guide" || shape.kind === "dimension" || shape.kind === "symbol" ? {} : { style: newStyle(s, shape.kind) }),
         }) as Entity,
     );
     this.ctx.commit(addPatch(doc, `New ${shapes[0].kind}`, entities));

@@ -361,7 +361,7 @@ const DRAW_TOOLS: ToolDef[] = [
   },
 ];
 
-const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer"];
+const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer", "symbol"];
 const ALL = [...DRAW_TOOLS, ...EDIT_TOOLS];
 /** Tools in palette order. */
 export const TOOLS: ToolDef[] = ORDER.map((id) => ALL.find((t) => t.id === id)!);

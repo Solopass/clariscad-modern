@@ -9,7 +9,8 @@
 // Each face is a line a + d·u + n·o (u along the wall, o the face offset). We find each
 // face's [u0, u1] from the end conditions, subtract the intervals that lie inside other
 // walls' bands, and emit the remaining pieces plus caps and jambs as segments.
-import type { Id, WallEntity } from "./types";
+import type { Id, WallEntity, WallOpening } from "./types";
+import type { Transform2D } from "./transform";
 import { type Prim, bandOffsets } from "./prims";
 import { lineLine } from "./intersections";
 import { type Vec2, add, cross, dist, dot, normalize, perp, scale, sub } from "./vec";
@@ -134,12 +135,20 @@ function subtract(ranges: [number, number][], cut: [number, number]): [number, n
   return out.filter(([a, b]) => b - a > EPS);
 }
 
-/** Solve every wall. Returns segments per wall id. */
-export function solveWalls(walls: WallEntity[]): Map<Id, Prim[]> {
+export interface WallSolve {
+  prims: Prim[];
+  /** Solid parts of the wall as closed outlines (openings left out), for fills. */
+  fill: Vec2[][];
+  /** Symbol frame per opening: x along the wall (hinge side flips it), y across (swing side flips it). */
+  frames: { opening: WallOpening; T: Transform2D }[];
+}
+
+/** Solve every wall. */
+export function solveWalls(walls: WallEntity[]): Map<Id, WallSolve> {
   const ws = walls.map(prep).filter((w): w is W => !!w);
   const ends = new Map<W, [End, End]>();
   for (const w of ws) ends.set(w, [endCondition(w, false, ws), endCondition(w, true, ws)]);
-  const out = new Map<Id, Prim[]>();
+  const out = new Map<Id, WallSolve>();
 
   for (const w of ws) {
     const [s, e] = ends.get(w)!;
@@ -162,9 +171,64 @@ export function solveWalls(walls: WallEntity[]): Map<Id, Prim[]> {
     for (const op of w.e.openings ?? [])
       for (const u of [op.at - op.width / 2, op.at + op.width / 2])
         if (u > 0 && u < w.len) prims.push({ t: "seg", a: facePoint(w, w.off[0], u), b: facePoint(w, w.off[1], u) });
-    out.set(w.e.id, prims);
+    out.set(w.e.id, { prims, fill: fillOutlines(w, s, e), frames: openingFrames(w) });
   }
   return out;
+}
+
+/** The band between the (mitred) faces, cut into pieces at openings. */
+function fillOutlines(w: W, s: End, e: End): Vec2[][] {
+  const gaps = (w.e.openings ?? []).map((o) => [o.at - o.width / 2, o.at + o.width / 2] as [number, number]).sort((x, y) => x[0] - y[0]);
+  const bounds: [number, number][] = [];
+  let from = -Infinity;
+  for (const [g0, g1] of gaps) {
+    if (g0 > from) bounds.push([from, g0]);
+    from = Math.max(from, g1);
+  }
+  bounds.push([from, Infinity]);
+  const out: Vec2[][] = [];
+  for (const [lo, hi] of bounds) {
+    let r0: [number, number] = [Math.max(s.u[0], lo), Math.min(e.u[0], hi)];
+    let r1: [number, number] = [Math.max(s.u[1], lo), Math.min(e.u[1], hi)];
+    const ok0 = r0[1] - r0[0] > EPS;
+    const ok1 = r1[1] - r1[0] > EPS;
+    if (!ok0 && !ok1) continue;
+    // One face has no length here (a mitre ends inside this piece): pinch it to a point
+    // so the outline stays a simple shape instead of crossing itself.
+    if (!ok0) r0 = [clamp(r0[1], r1[0], r1[1]), clamp(r0[1], r1[0], r1[1])];
+    if (!ok1) r1 = [clamp(r1[1], r0[0], r0[1]), clamp(r1[1], r0[0], r0[1])];
+    out.push([facePoint(w, w.off[0], r0[0]), facePoint(w, w.off[0], r0[1]), facePoint(w, w.off[1], r1[1]), facePoint(w, w.off[1], r1[0])]);
+  }
+  return out;
+}
+
+function openingFrames(w: W): { opening: WallOpening; T: Transform2D }[] {
+  const mid = (w.off[0] + w.off[1]) / 2;
+  return (w.e.openings ?? [])
+    .filter((o) => o.symbolId)
+    .map((o) => {
+      const c = facePoint(w, mid, o.at);
+      const x = o.hingeFlip ? scale(w.d, -1) : w.d;
+      const y = o.swingFlip ? scale(w.n, -1) : w.n;
+      return { opening: o, T: { a: x.x, b: x.y, c: y.x, d: y.y, e: c.x, f: c.y } };
+    });
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * Centre for a new opening of `width` near distance `along` on the wall: kept clear of
+ * the wall ends by half the thickness (so it never runs into a corner joint) and of
+ * other openings. Null if it does not fit.
+ */
+export function fitOpening(w: WallEntity, along: number, width: number): number | null {
+  const len = dist(w.a, w.b);
+  const lo = width / 2 + w.thickness / 2;
+  const hi = len - width / 2 - w.thickness / 2;
+  if (hi < lo) return null;
+  const at = clamp(along, lo, hi);
+  const clash = (w.openings ?? []).some((o) => Math.abs(o.at - at) < (o.width + width) / 2 - 1e-9);
+  return clash ? null : at;
 }
 
 /** Distance along a wall to the point nearest `p`, clamped to the wall. */

@@ -15,6 +15,8 @@ export interface StyleRef {
   color?: string;
   /** Hatch/fill pattern id for closed shapes. */
   fill?: string;
+  /** Pattern size multiplier (1 = the pattern's paper size at the layer scale). */
+  fillScale?: number;
 }
 
 interface EntityBase {
@@ -57,8 +59,6 @@ export interface WallEntity extends EntityBase {
   b: Vec2;
   thickness: number;
   justify: Justify;
-  /** Cavity/fill pattern id. */
-  fill?: string;
   /** Door/window openings: `at` = distance from `a` along the wall to the opening's centre. */
   openings?: WallOpening[];
 }
@@ -69,6 +69,10 @@ export interface WallOpening {
   width: number;
   /** Symbol drawn in the opening (door swing, window), if any. */
   symbolId?: Id;
+  /** Hinge at the far end instead of the near end (along the wall). */
+  hingeFlip?: boolean;
+  /** Swing to the other side of the wall. */
+  swingFlip?: boolean;
 }
 
 export interface RectEntity extends EntityBase {
@@ -218,6 +222,12 @@ export interface SymbolDef {
   /** Insertion point in the symbol's own coordinates. */
   origin: Vec2;
   entities: Entity[];
+  /**
+   * Door/window symbols: drawn inside a wall opening. The symbol is authored with
+   * the opening centred on the origin along +x, `width` wide, the wall's centre line
+   * on y = 0 and the swing on +y; it is scaled to the opening's width.
+   */
+  opening?: { width: number };
 }
 
 export type UnitSystem = "architectural" | "engineering" | "inches" | "feet" | "mm" | "cm" | "m";

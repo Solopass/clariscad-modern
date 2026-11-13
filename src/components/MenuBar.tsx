@@ -5,6 +5,17 @@ import { useDocumentStore, newDocument } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
 import { viewportRef } from "../canvas/controller";
 import { Dialog, type DialogField } from "./Dialog";
+import type { PaletteId, PaletteState } from "../App";
+import type { DraftingStandard } from "../kernel/types";
+import { explodeSelection, makeSymbol } from "../state/symbols";
+
+const STANDARD_LABELS: [DraftingStandard, string][] = [
+  ["ANSI", "ANSI Y14.5"],
+  ["ISO", "ISO"],
+  ["DIN", "DIN"],
+  ["JIS", "JIS"],
+  ["BS308", "BS 308"],
+];
 import { duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
 
 type DialogSpec = { title: string; fields: DialogField[]; okLabel?: string; run(v: Record<string, number>): void };
@@ -28,7 +39,7 @@ const UNITS: [UnitSystem, string][] = [
   ["m", "Meters"],
 ];
 
-export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: boolean; setModifiersOpen(v: boolean): void }) {
+export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setPalette(id: PaletteId, v: boolean): void }) {
   const [open, setOpen] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const ds = useDocumentStore();
@@ -152,16 +163,37 @@ export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: bo
           "-",
           { label: "Bring to Front", disabled: none, run: () => reorder("front") },
           { label: "Send to Back", disabled: none, run: () => reorder("back") },
+          "-",
+          {
+            label: "Make Symbol…",
+            disabled: none,
+            run: () => {
+              const name = prompt("Symbol name", `Symbol ${ds.doc.symbols.length + 1}`);
+              if (name) makeSymbol(name);
+            },
+          },
+          { label: "Explode Symbol", disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "symbol"), run: explodeSelection },
         ] as (Item | "-")[];
       })(),
     },
     {
       title: "Layout",
-      items: UNITS.map(([u, label]) => ({ label, checked: ds.doc.units === u, run: () => ds.setUnits(u) })),
+      items: [
+        ...UNITS.map(([u, label]) => ({ label, checked: ds.doc.units === u, run: () => ds.setUnits(u) })),
+        "-",
+        ...STANDARD_LABELS.map(([s, label]) => ({ label: `Standard: ${label}`, checked: ds.doc.standard === s, run: () => ds.setStandard(s) })),
+      ] as (Item | "-")[],
     },
     {
       title: "Window",
-      items: [{ label: "Modifiers", checked: modifiersOpen, run: () => setModifiersOpen(!modifiersOpen) }],
+      items: (
+        [
+          ["modifiers", "Modifiers"],
+          ["layers", "Layers"],
+          ["attributes", "Attributes"],
+          ["symbols", "Symbols"],
+        ] as [PaletteId, string][]
+      ).map(([id, label]) => ({ label, checked: palettes[id], run: () => setPalette(id, !palettes[id]) })),
     },
   ];
 

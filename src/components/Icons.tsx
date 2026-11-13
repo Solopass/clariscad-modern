@@ -69,6 +69,13 @@ export function ToolIcon({ id }: { id: ToolId }) {
         return <path d="M4 18 L4 10 A 6 6 0 0 1 10 4 L18 4" {...S} />;
       case "chamfer":
         return <path d="M4 18 L4 10 L10 4 L18 4" {...S} />;
+      case "symbol":
+        return (
+          <g>
+            <rect x="3" y="3" width="14" height="14" {...S} strokeWidth={1} strokeDasharray="2 2" />
+            <path d="M6 14 L6 6 M6 14 A 8 8 0 0 0 14 6" {...S} />
+          </g>
+        );
     }
   })();
   return (

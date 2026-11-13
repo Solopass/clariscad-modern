@@ -84,7 +84,7 @@ Waiting on the owner's reference copy of the original program to match the look 
 - [x] Fixed two M2 bugs found in the browser: drags never reached the Select tool (moves were only forwarded for
       freehand), and a disposed viewport (React StrictMode double mount) kept its canvas listeners and acted twice
 
-New keys: W wall, M dimension, T trim, X extend, K split, O offset, I fillet, H chamfer, Ctrl+D duplicate.
+New keys (M4): Y symbol. (M3:) W wall, M dimension, T trim, X extend, K split, O offset, I fillet, H chamfer, Ctrl+D duplicate.
 Dev hook: `window.__stores.doc` / `.tool` and `window.__cad` (use these from the console; `import()` can load a second copy).
 
 Known gaps: splines can't be trimmed/split/offset yet; ellipse offset unsupported; 3+ walls meeting at one point are
@@ -124,7 +124,50 @@ Design:
 - **Arrange menu**: Duplicate, Step & Repeat (N × ΔX, ΔY), Polar Array (N over θ about a point),
   Rotate, Flip H/V, Bring to Front / Send to Back (reorder op).
 
-### Milestones 4–5
+### Milestone 4: layers, hatches, symbols, standards (done 2026-11-13)
+
+- [x] Layers palette: visible, locked, colour, rename (double-click), per-layer scale presets/custom, active layer,
+      New / Delete (takes its objects, undoable, keeps order) / reorder / Move Selection Here
+- [x] Units and drafting standard are undoable document properties; Layout menu has both
+- [x] Hatches: 13 patterns (solid, 2 grays, ANSI31, crosshatch, steel, brick, concrete, insulation, wood, earth, sand),
+      paper-sized × layer scale × pattern size; tint when too fine to see; walls fill from the solver's outline
+- [x] Attributes palette: pen, line type, colour, fill, pattern size; edits the selection and sets new-object defaults
+- [x] Symbols: Make / Explode (stretched circles → ellipses), Symbols palette with previews, Symbol tool (Y) with
+      scale/rotation, .tcsym import/export with id-collision handling, built-ins (single/double door, window, north
+      arrow, section mark) copied into the drawing on first use
+- [x] Doors/windows dropped on a wall become openings drawn by the wall (click side sets the swing, nearer end the
+      hinge; mirroring flips the swing); symbol fills render
+
+Not yet: true per-layer magnification on the sheet (see design note below); editing a symbol's contents in place;
+flip-door commands on existing openings (data is there: `hingeFlip` / `swingFlip`).
+
+Design:
+- **Layer scale stays an annotation/print scale** (decision from M1: one shared model space). True
+  "each layer magnified on the sheet" (classic multi-scale paper space) is deferred until the owner's
+  reference copy shows exactly how it behaved; it would be a view transform per layer, not a data change.
+- **Document properties** (units, standard) become an undoable `docProps` op; applyOps re-syncs
+  dimension geometry. Layer edits (add, rename, colour, scale, visible, locked, delete, reorder) are
+  `layer` ops; deleting a layer removes its entities in the same patch; the last layer can't go.
+- **Layers palette**: rows with visible/locked toggles, colour, name, scale preset (1:1, 1/4"=1'-0",
+  1/8", 1", 3", 1:20, 1:50, 1:100, custom), active marker; New / Delete / Move Selection Here.
+- **Hatches** (`kernel/hatch.ts`): AutoCAD-style line families (angle, origin, spacing, shift, dashes)
+  in paper mm × layer scale × fill scale, clipped to an entity's closed outline with the even-odd
+  rule. Patterns: solid, light/dark gray (solid tints), ANSI31 diagonal, crosshatch, steel (ANSI32),
+  brick, concrete, insulation (zigzag), wood grain, earth, sand (dots). Applies to closed entities via
+  `style.fill` (+ `style.fillScale`) and to walls via `wall.fill` (band outline). Generated per entity
+  object + scale and cached; capped (falls back to a gray tint when a pattern would be too dense).
+- **Attributes palette**: pen weight (0.13–2.00 mm), dash pattern, fill pattern, colour; edits the
+  selection (one undo step) and sets the defaults for new entities.
+- **Symbols**: Make Symbol (selection → SymbolDef with origin at the selection's lower-left, replaced by
+  an instance), Explode, Symbols palette (previews, click to arm the Symbol tool; scale/rotation in
+  the Methods bar), export/import a library as `.tcsym` JSON (browser download/upload until M5's native
+  dialogs), and a built-in starter set (single/double door, window, north arrow, section mark).
+  Door/window symbols carry `opening: { width }`; placing one on a wall adds a wall opening with that
+  symbol, drawn by the wall solver scaled to the opening and aligned to the wall (moves with it).
+- **Standards**: Layout ▸ Drafting Standard (ANSI, ISO, DIN, JIS, BS 308), undoable, re-styles all
+  dimensions.
+
+### Milestone 5
 
 See `ARCHITECTURE.md` §5.
 

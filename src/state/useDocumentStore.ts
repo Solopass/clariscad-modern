@@ -2,7 +2,7 @@
 // mutable object kept outside reactive state; `version` bumps on every
 // change so views know to redraw.
 import { create } from "zustand";
-import { DOCUMENT_VERSION, type CadDocument, type Id, type Layer, type UnitSystem } from "../kernel/types";
+import { DOCUMENT_VERSION, type CadDocument, type DraftingStandard, type Id, type Layer, type UnitSystem } from "../kernel/types";
 import { EntityIndex } from "../kernel/spatialIndex";
 import { type Patch, applyOps, invert, syncContext } from "./ops";
 import { withDependents } from "./dependents";
@@ -47,8 +47,10 @@ export interface DocumentState {
   redo(): void;
   load(doc: CadDocument): void;
   setSelection(ids: Iterable<Id>): void;
-  /** Display units (a preference, not an undoable edit). */
+  /** Display units (undoable). */
   setUnits(u: UnitSystem): void;
+  /** Drafting standard for dimensions (undoable). */
+  setStandard(s: DraftingStandard): void;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => {
@@ -96,10 +98,13 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     setUnits(units) {
-      const s = get();
-      const doc = { ...s.doc, units };
-      syncContext(doc, s.index, { dims: true });
-      set({ doc, version: s.version + 1 });
+      const d = get().doc;
+      if (d.units !== units) get().commit({ label: "Change Units", ops: [{ op: "docProps", before: { units: d.units }, after: { units } }] });
+    },
+
+    setStandard(standard) {
+      const d = get().doc;
+      if (d.standard !== standard) get().commit({ label: "Change Standard", ops: [{ op: "docProps", before: { standard: d.standard }, after: { standard } }] });
     },
   };
 });
