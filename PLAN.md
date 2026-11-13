@@ -9,6 +9,10 @@ Spec and data model: `ARCHITECTURE.md`.
 - `bun run typecheck`
 - `bun run dev`: web UI at http://127.0.0.1:5183 (browser-pane preview config `temaricad` in `D:\Workspace\.claude\launch.json`)
 - `bun run tauri dev`: desktop window (first Rust build takes about a minute)
+- Web version: every push to `main` runs the tests, builds and deploys to GitHub Pages
+  (`.github/workflows/pages.yml`; the build uses relative asset paths so it works under `/temaricad/`).
+  Check the production build at a subpath with the `temaricad-dist` preview config (http://127.0.0.1:5184/temaricad/).
+  The Pages site is public even though the repo is private.
 - `bun run tauri build`: Windows installers in `src-tauri\target\release\bundle\` — `msi\TemariCad_<ver>_x64_en-US.msi`
   and `nsis\TemariCad_<ver>_x64-setup.exe` (first built 2026-11-13, ~90 s; unsigned, so Windows SmartScreen
   warns on install; icons are still Tauri's placeholders)
