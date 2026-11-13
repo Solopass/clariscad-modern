@@ -5,6 +5,8 @@ import { copySelection, cutSelection, pasteSelection } from "../state/clipboard"
 import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
 import { explodeSelection, makeSymbol } from "../state/symbols";
+import { editDimensionText, flipSelectedDimensions } from "../state/dimEdit";
+import { flipDoorSwings } from "../state/wallEdit";
 import { selectableIds } from "../state/selection";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
@@ -56,6 +58,7 @@ export function runCommand(id: string, host: CommandHost): boolean {
     case "file.plot":
     case "edit.info":
     case "layout.sheet":
+    case "layout.title":
     case "arrange.step":
     case "arrange.polar":
     case "arrange.rotate":
@@ -162,6 +165,17 @@ export function runCommand(id: string, host: CommandHost): boolean {
     }
     case "arrange.explode":
       explodeSelection();
+      return true;
+    case "dim.flip":
+      flipSelectedDimensions();
+      return true;
+    case "dim.text":
+      editDimensionText();
+      return true;
+    case "wall.swing":
+      flipDoorSwings();
+      return true;
+    case "symbol.edit":
       return true;
     default:
       return false;

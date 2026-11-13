@@ -7,7 +7,7 @@ import { type Prim, flattenPrim, primsOf, closestOnPrim } from "../kernel/prims"
 import { intersectPrims } from "../kernel/intersections";
 import { translateEntity } from "../kernel/edit";
 import { translation } from "../kernel/transform";
-import { handlesOf, moveHandle } from "../kernel/handles";
+import { type GripCtx, gripsOf, moveHandle } from "../kernel/handles";
 import { simplifyPolyline } from "../kernel/simplify";
 import { type Vec2, dist, sub } from "../kernel/vec";
 import { expandSelection } from "../state/groups";
@@ -433,6 +433,11 @@ export class SelectTool implements Tool {
     return this.ctx.index().nearest(p, this.ctx.tolerance(), this.ok(alt))[0]?.entity.id ?? null;
   }
 
+  private gripCtx(e: Entity): GripCtx {
+    const doc = this.ctx.doc();
+    return { scale: doc.layers.find((l) => l.id === e.layerId)?.scale ?? 1, units: doc.units, standard: doc.standard };
+  }
+
   /** A handle of a selected entity under the cursor. */
   private handleHit(p: Vec2): { id: Id; handle: string; p: Vec2 } | null {
     const index = this.ctx.index();
@@ -441,7 +446,7 @@ export class SelectTool implements Tool {
     for (const id of this.ctx.selection()) {
       const e = index.get(id);
       if (!e || !this.ok()(e)) continue;
-      for (const h of handlesOf(e)) {
+      for (const h of gripsOf(e, this.gripCtx(e))) {
         const d = dist(h.p, p);
         if (d <= tol && (!best || d < best.d)) best = { id, handle: h.name, p: h.p, d };
       }
@@ -525,7 +530,7 @@ export class SelectTool implements Tool {
       if (dist(e.screen, this.downScreen) > DRAG_PX) {
         const ent = this.ctx.index().get(this.grip.id);
         if (ent) {
-          const after = moveHandle(ent, this.grip.handle, e.p);
+          const after = moveHandle(ent, this.grip.handle, e.p, this.gripCtx(ent));
           if (after !== ent) this.ctx.commit(replacePatch("Reshape", [[ent, after]], { grip: { handle: this.grip.handle, to: e.p } }));
         }
       }
@@ -639,7 +644,7 @@ export class SelectTool implements Tool {
     }
     if (this.mode === "grip" && this.grip && this.gripTarget) {
       const ent = index.get(this.grip.id);
-      if (ent) out.shapes.push(stripId(moveHandle(ent, this.grip.handle, this.gripTarget)));
+      if (ent) out.shapes.push(stripId(moveHandle(ent, this.grip.handle, this.gripTarget, this.gripCtx(ent))));
     }
     return out;
   }

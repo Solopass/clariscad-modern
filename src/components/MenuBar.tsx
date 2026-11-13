@@ -10,6 +10,8 @@ import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, sav
 import type { PaletteId, PaletteState } from "../App";
 import type { DraftingStandard } from "../kernel/types";
 import { explodeSelection, makeSymbol } from "../state/symbols";
+import { editDimensionText, flipSelectedDimensions } from "../state/dimEdit";
+import { flipDoorSwings } from "../state/wallEdit";
 import { alignSelection, duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
 import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
@@ -267,6 +269,10 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
             },
           },
           { label: "Explode Symbol", shortcut: sc("arrange.explode"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "symbol"), run: explodeSelection },
+          "-",
+          { label: "Flip Dimension", shortcut: sc("dim.flip"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "dimension"), run: flipSelectedDimensions },
+          { label: "Dimension Text…", shortcut: sc("dim.text"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "dimension"), run: () => editDimensionText() },
+          { label: "Flip Door Swing", shortcut: sc("wall.swing"), disabled: !ds.doc.entities.some((e) => ds.selection.has(e.id) && e.kind === "wall" && e.openings?.length), run: flipDoorSwings },
         ] as (Item | "-")[];
       })(),
     },

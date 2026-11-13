@@ -185,6 +185,8 @@ export interface DimensionEntity extends EntityBase {
   /** Where the dimension line sits. */
   linePoint: Vec2;
   textOverride?: string;
+  /** Extra shift of the text from its default spot, in model millimetres. Dragging the text sets this. */
+  textShift?: Vec2;
   /** Chain/baseline group id. */
   groupId?: Id;
 }

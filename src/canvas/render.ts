@@ -3,7 +3,7 @@
 import type { DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
 import { type DimStyle, dimGeometry } from "../kernel/dimensions";
 import { textWidth } from "../kernel/textMetrics";
-import { handlesOf } from "../kernel/handles";
+import { type GripCtx, gripsOf } from "../kernel/handles";
 import { entityHatch, fillRings, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
 import { type Prim, type PrimContext, entityBBox, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
@@ -400,8 +400,8 @@ export function fillEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawCon
 // ---------------------------------------------------------------- overlay marks
 
 /** Classic black square selection handles at an entity's key points (the grip handles). */
-export function handlePoints(e: Entity): Vec2[] {
-  return handlesOf(e).map((h) => h.p);
+export function handlePoints(e: Entity, ctx?: GripCtx): Vec2[] {
+  return gripsOf(e, ctx).map((h) => h.p);
 }
 
 export const TEXT_FONT = `"Helvetica Neue", Helvetica, Arial, sans-serif`;

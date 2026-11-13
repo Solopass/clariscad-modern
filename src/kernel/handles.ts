@@ -1,9 +1,10 @@
 // Named key points of entities. Used for grip editing (drag a handle), for
 // associative dimension refs ("b", "vertex:2", "center", ...), and to
 // re-attach refs by position after an edit.
-import type { Entity } from "./types";
+import type { DraftingStandard, Entity, UnitSystem, WallEntity } from "./types";
 import { rectCorners } from "./prims";
-import { type Vec2, add, angleOf, dist, dot, fromAngle, mid, normAngle, rotate, scale, sub } from "./vec";
+import { STANDARDS, dimGeometry, textShiftFor } from "./dimensions";
+import { type Vec2, add, angleOf, dist, dot, fromAngle, mid, normAngle, perp, rotate, scale, sub } from "./vec";
 
 export interface Handle {
   name: string;
@@ -11,6 +12,13 @@ export interface Handle {
 }
 
 const ellPoint = (c: Vec2, rx: number, ry: number, rot: number, u: number) => add(c, rotate({ x: rx * Math.cos(u), y: ry * Math.sin(u) }, rot));
+
+/** What a dimension text grip and a wall opening grip need from the drawing. */
+export interface GripCtx {
+  scale: number;
+  units: UnitSystem;
+  standard: DraftingStandard;
+}
 
 export function handlesOf(e: Entity): Handle[] {
   switch (e.kind) {
@@ -57,6 +65,70 @@ export function handlesOf(e: Entity): Handle[] {
   }
 }
 
+/** Handles a user can drag. Adds the dimension text and the wall-opening grips. */
+export function gripsOf(e: Entity, ctx?: GripCtx): Handle[] {
+  const hs = handlesOf(e);
+  if (e.kind === "dimension" && ctx) {
+    const g = dimGeometry(e, ctx.scale, STANDARDS[ctx.standard] ?? STANDARDS.ANSI, ctx.units);
+    if (g.text) hs.push({ name: "text", p: g.text.pos });
+  }
+  if (e.kind === "wall") hs.push(...openingGrips(e, ctx?.scale ?? 1));
+  return hs;
+}
+
+/** Centre, two jambs, and a swing grip for each opening. */
+function openingGrips(e: WallEntity, scaleK: number): Handle[] {
+  const len = dist(e.a, e.b);
+  if (len < 1e-9 || !e.openings?.length) return [];
+  const d = scale(sub(e.b, e.a), 1 / len);
+  const n = perp(d);
+  const out: Handle[] = [];
+  const reach = e.thickness / 2 + 8 * scaleK;
+  for (const o of e.openings) {
+    const c = add(e.a, scale(d, o.at));
+    out.push({ name: `open:${o.id}:at`, p: c });
+    out.push({ name: `open:${o.id}:a`, p: add(e.a, scale(d, o.at - o.width / 2)) });
+    out.push({ name: `open:${o.id}:b`, p: add(e.a, scale(d, o.at + o.width / 2)) });
+    out.push({ name: `open:${o.id}:swing`, p: add(c, scale(n, (o.swingFlip ? -1 : 1) * reach)) });
+  }
+  return out;
+}
+
+function alongWall(e: WallEntity, p: Vec2): number {
+  const len = dist(e.a, e.b);
+  if (len < 1e-9) return 0;
+  const d = scale(sub(e.b, e.a), 1 / len);
+  return dot(sub(p, e.a), d);
+}
+
+/** Keep an opening on the wall, clear of the ends and of the other openings. */
+function placeOpening(e: WallEntity, id: string, at: number, width: number): { at: number; width: number } | null {
+  const len = dist(e.a, e.b);
+  width = Math.max(width, 10);
+  const margin = e.thickness / 2;
+  const lo = width / 2 + margin;
+  const hi = len - width / 2 - margin;
+  if (hi < lo - 1e-6) return null;
+  let c = Math.min(hi, Math.max(lo, at));
+  const others = (e.openings ?? []).filter((o) => o.id !== id);
+  for (let pass = 0; pass < others.length + 1; pass++) {
+    let moved = false;
+    for (const o of others) {
+      const gap = (o.width + width) / 2;
+      if (Math.abs(o.at - c) < gap - 1e-6) {
+        const left = o.at - gap;
+        const right = o.at + gap;
+        c = Math.abs(c - left) <= Math.abs(right - c) ? left : right;
+        c = Math.min(hi, Math.max(lo, c));
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  if (others.some((o) => Math.abs(o.at - c) < (o.width + width) / 2 - 1e-6)) return null;
+  return { at: c, width };
+}
+
 export function resolveHandle(e: Entity, name: string): Vec2 | null {
   return handlesOf(e).find((h) => h.name === name)?.p ?? null;
 }
@@ -92,7 +164,7 @@ function reseatOpenings(before: Extract<Entity, { kind: "wall" }>, after: Extrac
 }
 
 /** Entity with handle `name` dragged to `p` (same id). Returns the entity unchanged for unknown handles. */
-export function moveHandle(e: Entity, name: string, p: Vec2): Entity {
+export function moveHandle(e: Entity, name: string, p: Vec2, ctx?: GripCtx): Entity {
   const vi = name.startsWith("vertex:") ? +name.slice(7) : -1;
   switch (e.kind) {
     case "line":
@@ -112,6 +184,7 @@ export function moveHandle(e: Entity, name: string, p: Vec2): Entity {
       }
       return e;
     case "wall": {
+      if (name.startsWith("open:")) return moveOpening(e, name, p);
       let next: typeof e;
       if (name === "a") next = { ...e, a: p };
       else if (name === "b") next = { ...e, b: p };
@@ -166,9 +239,48 @@ export function moveHandle(e: Entity, name: string, p: Vec2): Entity {
       return name === "point" ? { ...e, point: p } : e;
     case "symbol":
       return name === "insert" ? { ...e, position: p } : e;
-    case "dimension":
-      return name === "line" ? { ...e, linePoint: p } : e;
+    case "dimension": {
+      if (name === "line") return { ...e, linePoint: p };
+      if (name === "text" && ctx) {
+        const shift = textShiftFor(e, p, ctx.scale, STANDARDS[ctx.standard] ?? STANDARDS.ANSI, ctx.units);
+        const next = { ...e };
+        if (shift) next.textShift = shift;
+        else delete next.textShift;
+        return next;
+      }
+      return e;
+    }
     case "text":
       return name === "insert" ? { ...e, position: p } : e;
   }
+}
+
+function moveOpening(e: WallEntity, name: string, p: Vec2): WallEntity {
+  const [, id, which] = name.split(":");
+  const op = e.openings?.find((o) => o.id === id);
+  if (!op || !e.openings) return e;
+  const len = dist(e.a, e.b);
+  if (len < 1e-9) return e;
+  const d = scale(sub(e.b, e.a), 1 / len);
+  const n = perp(d);
+  if (which === "swing") {
+    const c = add(e.a, scale(d, op.at));
+    const swingFlip = dot(sub(p, c), n) < 0;
+    if (swingFlip === !!op.swingFlip) return e;
+    return { ...e, openings: e.openings.map((o) => (o.id === id ? { ...o, swingFlip } : o)) };
+  }
+  const u = alongWall(e, p);
+  let at = op.at;
+  let width = op.width;
+  if (which === "at") at = u;
+  else if (which === "a" || which === "b") {
+    const fixed = which === "a" ? op.at + op.width / 2 : op.at - op.width / 2;
+    const lo = Math.min(fixed, u);
+    const hi = Math.max(fixed, u);
+    width = hi - lo;
+    at = (lo + hi) / 2;
+  } else return e;
+  const placed = placeOpening(e, id, at, width);
+  if (!placed) return e;
+  return { ...e, openings: e.openings.map((o) => (o.id === id ? { ...o, at: placed.at, width: placed.width } : o)) };
 }

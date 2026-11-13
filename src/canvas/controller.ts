@@ -10,6 +10,7 @@ import { matchShortcut } from "../input/keymap";
 import { runCommand } from "../input/runCommand";
 import { type Vec2, dist } from "../kernel/vec";
 import { useDocumentStore, newId } from "../state/useDocumentStore";
+import { editDimensionText } from "../state/dimEdit";
 import { useToolStore } from "../state/useToolStore";
 import { useCursorStore } from "../state/useCursorStore";
 import { methodDef, type Shape } from "../tools/defs";
@@ -315,6 +316,10 @@ export class ViewportController {
         if (text && text !== hit.text) ds.commit({ label: "Edit Text", ops: [{ op: "replace", before: hit, after: { ...hit, text } }] });
         return;
       }
+      if (hit?.kind === "dimension") {
+        editDimensionText(hit);
+        return;
+      }
     }
     this.tool.dblclick(info);
     this.mark("overlay");
@@ -456,7 +461,10 @@ export class ViewportController {
     // Selection handles.
     for (const id of ds.selection) {
       const e = ds.index.get(id);
-      if (e) drawHandles(ctx, this.cam, handlePoints(e));
+      if (e) {
+        const doc = ds.doc;
+        drawHandles(ctx, this.cam, handlePoints(e, { scale: doc.layers.find((l) => l.id === e.layerId)?.scale ?? 1, units: doc.units, standard: doc.standard }));
+      }
     }
 
     const ov = this.tool.overlay(info);

@@ -79,6 +79,11 @@ const COMMANDS: Shortcut[] = [
   { id: "arrange.polar", label: "Polar Array", section: "Arrange", chord: mod("p", { alt: true }) },
   { id: "arrange.symbol", label: "Make Symbol", section: "Arrange", chord: mod("y", { shift: true }) },
   { id: "arrange.explode", label: "Explode Symbol", section: "Arrange", chord: mod("y", { alt: true }) },
+  { id: "dim.flip", label: "Flip Dimension", section: "Arrange", chord: { key: "f", alt: true, shift: true } },
+  { id: "dim.text", label: "Dimension Text", section: "Arrange", chord: { key: "t", alt: true, shift: true } },
+  { id: "wall.swing", label: "Flip Door Swing", section: "Arrange", chord: { key: "s", alt: true, shift: true } },
+  { id: "symbol.edit", label: "Edit Symbol", section: "Arrange", chord: { key: "e", alt: true, shift: true }, remap: "Ctrl/⌘Shift+E is Export DXF." },
+  { id: "layout.title", label: "Title Block", section: "Layout", chord: { key: "b", alt: true, shift: true } },
 
   { id: "layout.sheet", label: "Rulers & Drawing Size", section: "Layout", chord: mod("r", { alt: true }), remap: "Ctrl/⌘R reloads the page, so the rulers dialog is Ctrl/⌘Alt+R." },
 
