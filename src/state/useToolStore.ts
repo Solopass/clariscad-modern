@@ -4,7 +4,27 @@ import { create } from "zustand";
 import type { Modifiers } from "../kernel/snapEngine";
 import type { Justify } from "../kernel/types";
 
-export type ToolId = "select" | "line" | "doubleLine" | "rect" | "circle" | "arc" | "ellipse" | "polygon" | "spline" | "guide";
+export type ToolId =
+  | "select"
+  | "line"
+  | "doubleLine"
+  | "wall"
+  | "rect"
+  | "circle"
+  | "arc"
+  | "ellipse"
+  | "polygon"
+  | "spline"
+  | "guide"
+  | "dimension"
+  | "trim"
+  | "extend"
+  | "split"
+  | "offset"
+  | "fillet"
+  | "chamfer";
+
+export type TrimModeSetting = "both" | "first" | "none";
 
 export interface ToolSettings {
   /** Grid snap spacing in mm. */
@@ -22,6 +42,18 @@ export interface ToolSettings {
   penWeight: number;
   dash: string;
   showWeights: boolean;
+  wallThickness: number;
+  wallJustify: "center" | "left" | "right";
+  openingWidth: number;
+  /** 0 = offset through the picked point. */
+  offsetDistance: number;
+  filletRadius: number;
+  chamferD1: number;
+  chamferD2: number;
+  /** Degrees; used when chamferByAngle. */
+  chamferAngle: number;
+  chamferByAngle: boolean;
+  trimMode: TrimModeSetting;
 }
 
 export interface ToolState {
@@ -47,6 +79,14 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   polygon: "inscribed",
   spline: "interpolated",
   guide: "horizontal",
+  wall: "twoPoint",
+  dimension: "horizontal",
+  trim: "trim",
+  extend: "extend",
+  split: "split",
+  offset: "offset",
+  fillet: "fillet",
+  chamfer: "chamfer",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -79,6 +119,16 @@ const DEFAULT_SETTINGS: ToolSettings = {
   penWeight: 0.25,
   dash: "solid",
   showWeights: false,
+  wallThickness: 6 * 25.4,
+  wallJustify: "center",
+  openingWidth: 36 * 25.4,
+  offsetDistance: 0,
+  filletRadius: 6 * 25.4,
+  chamferD1: 6 * 25.4,
+  chamferD2: 6 * 25.4,
+  chamferAngle: 45,
+  chamferByAngle: false,
+  trimMode: "both",
 };
 
 const KEY = "temaricad.tools.v1";

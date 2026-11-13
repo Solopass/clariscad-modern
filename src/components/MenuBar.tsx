@@ -4,6 +4,10 @@ import type { UnitSystem } from "../kernel/types";
 import { useDocumentStore, newDocument } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
 import { viewportRef } from "../canvas/controller";
+import { Dialog, type DialogField } from "./Dialog";
+import { duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
+
+type DialogSpec = { title: string; fields: DialogField[]; okLabel?: string; run(v: Record<string, number>): void };
 
 interface Item {
   label: string;
@@ -26,6 +30,7 @@ const UNITS: [UnitSystem, string][] = [
 
 export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: boolean; setModifiersOpen(v: boolean): void }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const ds = useDocumentStore();
   const settings = useToolStore((s) => s.settings);
   const setSetting = useToolStore((s) => s.setSetting);
@@ -81,6 +86,76 @@ export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: bo
       ],
     },
     {
+      title: "Arrange",
+      items: (() => {
+        const none = !ds.selection.size;
+        const g = settings.gridSpacing;
+        const center = () => selectionCenter() ?? { x: 0, y: 0 };
+        return [
+          { label: "Duplicate", shortcut: `${mod}D`, disabled: none, run: () => duplicate({ x: g, y: -g }) },
+          {
+            label: "Step and Repeat…",
+            disabled: none,
+            run: () =>
+              setDialog({
+                title: "Step and Repeat",
+                okLabel: "Repeat",
+                fields: [
+                  { key: "n", label: "Copies", kind: "count", value: 3 },
+                  { key: "dx", label: "Horizontal offset", kind: "length", value: g * 12 },
+                  { key: "dy", label: "Vertical offset", kind: "length", value: 0 },
+                ],
+                run: (v) => stepAndRepeat(v.n, { x: v.dx, y: v.dy }),
+              }),
+          },
+          {
+            label: "Polar Array…",
+            disabled: none,
+            run: () => {
+              const c = center();
+              setDialog({
+                title: "Polar Array",
+                okLabel: "Array",
+                fields: [
+                  { key: "n", label: "Total items", kind: "count", value: 6 },
+                  { key: "a", label: "Fill angle", kind: "angle", value: 2 * Math.PI },
+                  { key: "x", label: "Center X", kind: "length", value: c.x },
+                  { key: "y", label: "Center Y", kind: "length", value: c.y },
+                ],
+                run: (v) => polarArray(v.n, (v.a * 180) / Math.PI, { x: v.x, y: v.y }),
+              });
+            },
+          },
+          "-",
+          {
+            label: "Rotate…",
+            disabled: none,
+            run: () =>
+              setDialog({
+                title: "Rotate (about the selection's center)",
+                fields: [{ key: "a", label: "Angle (CCW)", kind: "angle", value: Math.PI / 2 }],
+                run: (v) => rotateSelection((v.a * 180) / Math.PI, center()),
+              }),
+          },
+          {
+            label: "Scale…",
+            disabled: none,
+            run: () =>
+              setDialog({
+                title: "Scale (about the selection's center)",
+                fields: [{ key: "k", label: "Factor", kind: "number", value: 2 }],
+                run: (v) => v.k > 0 && scaleSelection(v.k, center()),
+              }),
+          },
+          { label: "Flip Horizontal", disabled: none, run: () => flipSelection("horizontal", center()) },
+          { label: "Flip Vertical", disabled: none, run: () => flipSelection("vertical", center()) },
+          "-",
+          { label: "Bring to Front", disabled: none, run: () => reorder("front") },
+          { label: "Send to Back", disabled: none, run: () => reorder("back") },
+        ] as (Item | "-")[];
+      })(),
+    },
+    {
       title: "Layout",
       items: UNITS.map(([u, label]) => ({ label, checked: ds.doc.units === u, run: () => ds.setUnits(u) })),
     },
@@ -100,6 +175,19 @@ export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: bo
   }, [open]);
 
   return (
+    <>
+    {dialog && (
+      <Dialog
+        title={dialog.title}
+        fields={dialog.fields}
+        okLabel={dialog.okLabel}
+        onCancel={() => setDialog(null)}
+        onOk={(v) => {
+          setDialog(null);
+          dialog.run(v);
+        }}
+      />
+    )}
     <div data-menubar className="relative z-50 flex h-[20px] items-stretch border-b border-black bg-white px-2">
       <span className="mr-3 flex items-center font-bold" title="TemariCad">◆</span>
       {menus.map((m) => (
@@ -142,5 +230,6 @@ export function MenuBar({ modifiersOpen, setModifiersOpen }: { modifiersOpen: bo
         </div>
       ))}
     </div>
+    </>
   );
 }

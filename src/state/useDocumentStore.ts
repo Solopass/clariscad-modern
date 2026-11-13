@@ -4,10 +4,11 @@
 import { create } from "zustand";
 import { DOCUMENT_VERSION, type CadDocument, type Id, type Layer, type UnitSystem } from "../kernel/types";
 import { EntityIndex } from "../kernel/spatialIndex";
-import { type Patch, applyOps, invert } from "./ops";
+import { type Patch, applyOps, invert, syncContext } from "./ops";
+import { withDependents } from "./dependents";
 
 export function newDocument(): CadDocument {
-  const layer: Layer = { id: "layer-1", name: "Layer 1", visible: true, locked: false, scale: 1 };
+  const layer: Layer = { id: "layer-1", name: "Layer 1", visible: true, locked: false, scale: 48 };
   return {
     version: DOCUMENT_VERSION,
     units: "architectural",
@@ -19,7 +20,13 @@ export function newDocument(): CadDocument {
   };
 }
 
-const symbolMap = (doc: CadDocument) => ({ symbols: new Map(doc.symbols.map((s) => [s.id, s])) });
+/** Fresh index with its geometry context (symbols, wall solve, dimension geometry) in place. */
+export function buildIndex(doc: CadDocument): EntityIndex {
+  const index = new EntityIndex([], {});
+  syncContext(doc, index, { symbols: "all", walls: true, dims: true });
+  for (const e of doc.entities) index.upsert(e);
+  return index;
+}
 
 let counter = 0;
 /** Unique, sortable entity id. */
@@ -48,7 +55,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
   const doc = newDocument();
   return {
     doc,
-    index: new EntityIndex([], symbolMap(doc)),
+    index: buildIndex(doc),
     version: 0,
     selection: new Set(),
     undoStack: [],
@@ -57,8 +64,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     commit(p) {
       if (!p.ops.length) return;
       const s = get();
-      const next = applyOps(s.doc, s.index, p.ops);
-      const undoStack = [...s.undoStack, p].slice(-UNDO_LIMIT);
+      // Associated dimensions follow in the same undo step.
+      const full = withDependents(s.doc, p);
+      const next = applyOps(s.doc, s.index, full.ops);
+      const undoStack = [...s.undoStack, full].slice(-UNDO_LIMIT);
       set({ doc: next, version: s.version + 1, undoStack, redoStack: [], selection: pruneSelection(s.selection, s.index) });
     },
 
@@ -79,7 +88,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     load(doc) {
-      set({ doc, index: new EntityIndex(doc.entities, symbolMap(doc)), version: get().version + 1, undoStack: [], redoStack: [], selection: new Set() });
+      set({ doc, index: buildIndex(doc), version: get().version + 1, undoStack: [], redoStack: [], selection: new Set() });
     },
 
     setSelection(ids) {
@@ -87,7 +96,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     setUnits(units) {
-      set((s) => ({ doc: { ...s.doc, units }, version: s.version + 1 }));
+      const s = get();
+      const doc = { ...s.doc, units };
+      syncContext(doc, s.index, { dims: true });
+      set({ doc, version: s.version + 1 });
     },
   };
 });

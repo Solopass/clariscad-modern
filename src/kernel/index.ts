@@ -8,3 +8,5 @@ export * from "./snapEngine";
 export * from "./construct";
 export * from "./units";
 export * from "./simplify";
+export * from "./path";
+export * from "./booleanOps";

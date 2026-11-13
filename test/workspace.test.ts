@@ -5,6 +5,7 @@ import { newDocument } from "../src/state/useDocumentStore";
 import { methodDef } from "../src/tools/defs";
 import { DrawTool, SelectTool, type PointerInfo, type ToolContext } from "../src/tools/runtime";
 import { displayGridStep } from "../src/canvas/render";
+import type { ToolSettings } from "../src/state/useToolStore";
 import { screenToWorld, worldToScreen, zoomAt } from "../src/canvas/camera";
 
 const line = (id: string, ax: number, ay: number, bx: number, by: number): Entity => ({ id, layerId: "layer-1", kind: "line", a: { x: ax, y: ay }, b: { x: bx, y: by } });
@@ -27,6 +28,7 @@ function session(entities: Entity[] = []) {
     selection: () => selection,
     setSelection: (ids) => (selection = new Set(ids)),
     settings: () => ({
+      ...({} as ToolSettings),
       gridSpacing: 10,
       gridVisible: true,
       angleStep: 15,

@@ -63,8 +63,16 @@ export interface CurvePrim {
 
 export type Prim = SegPrim | ArcPrim | XLinePrim | EllPrim | CurvePrim;
 
+/**
+ * Shared, document-level inputs to geometry. Owned by the EntityIndex and
+ * updated field by field (never replaced wholesale) as the document changes.
+ */
 export interface PrimContext {
   symbols?: Map<Id, SymbolDef> | Record<Id, SymbolDef>;
+  /** Wall solver output. Used only while `entity` is the exact object being drawn. */
+  wallPrims?: Map<Id, { entity: Entity; prims: Prim[] }>;
+  /** Dimension geometry builder (depends on layer scale, drafting standard and units). */
+  dimPrims?: (e: Extract<Entity, { kind: "dimension" }>) => Prim[];
 }
 
 const isFull = (sweep: number) => sweep >= TAU - 1e-12;
@@ -330,13 +338,24 @@ export const isUnbounded = (e: Entity): boolean => e.kind === "guide";
 
 /** Bounding box of an entity's finite geometry; null if it has none (guides, empty or broken symbols). */
 export function entityBBox(e: Entity, ctx?: PrimContext): BBox | null {
+  let out: BBox | null = null;
   if (e.kind === "dimension") {
     const b = emptyBox();
     for (const p of e.points) grow(b, p);
     grow(b, e.linePoint);
-    return b.minX <= b.maxX ? b : null;
+    out = b.minX <= b.maxX ? b : null;
   }
-  let out: BBox | null = null;
+  if (e.kind === "wall") {
+    // Mitred corners can reach past the raw band by up to the thickness; use a padded box
+    // so the solver's output never leaves the indexed box.
+    const b = emptyBox();
+    for (const p of bandPrims(e.a, e.b, e.thickness, e.justify, true, true)) {
+      grow(b, p.a);
+      grow(b, p.b);
+    }
+    const pad = e.thickness * 4;
+    return { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
+  }
   for (const p of primsOf(e, ctx)) {
     const b = primBBox(p);
     if (b) out = out ? unionBox(out, b) : b;
@@ -344,13 +363,14 @@ export function entityBBox(e: Entity, ctx?: PrimContext): BBox | null {
   return out;
 }
 
-// Entities are immutable values, so primitives can be cached per object. Symbol
-// instances are not cached because their geometry depends on the symbol definition.
+// Entities are immutable values, so primitives can be cached per object. Symbols,
+// walls and dimensions are not cached: their geometry also depends on document-level
+// context (symbol definitions, neighbouring walls, layer scale / standard / units).
 const primCache = new WeakMap<Entity, Prim[]>();
 
 /** Cached toPrims() for hot paths (snapping, hit-testing). */
 export function primsOf(e: Entity, ctx?: PrimContext): Prim[] {
-  if (e.kind === "symbol") return toPrims(e, ctx);
+  if (e.kind === "symbol" || e.kind === "wall" || e.kind === "dimension") return toPrims(e, ctx);
   let p = primCache.get(e);
   if (!p) {
     p = toPrims(e, ctx);
@@ -517,7 +537,7 @@ export function bandOffsets(width: number, justify: "center" | "left" | "right")
   return [-width / 2, width / 2];
 }
 
-function bandPrims(a: Vec2, b: Vec2, width: number, justify: "center" | "left" | "right", capA: boolean, capB: boolean): SegPrim[] {
+export function bandPrims(a: Vec2, b: Vec2, width: number, justify: "center" | "left" | "right", capA: boolean, capB: boolean): SegPrim[] {
   const n = perp(normalize(sub(b, a)));
   const [o1, o2] = bandOffsets(width, justify);
   const a1 = add(a, scale(n, o1));
@@ -627,9 +647,13 @@ export function toPrims(e: Entity, ctx?: PrimContext, depth = 0): Prim[] {
       return polySegs(e.points, true);
     case "doubleLine":
       return bandPrims(e.a, e.b, e.width, e.justify, e.capStart, e.capEnd);
-    case "wall":
-      // Cap/junction cleanup is the wall solver's job (Milestone 3); raw walls are capped bands.
+    case "wall": {
+      // Solved geometry (junctions, openings) when the solver has seen this exact object;
+      // otherwise (previews, drags, no solver) a plain capped band.
+      const solved = ctx?.wallPrims?.get(e.id);
+      if (solved && solved.entity === e) return solved.prims;
       return bandPrims(e.a, e.b, e.thickness, e.justify, true, true);
+    }
     case "rect":
       return rectPrims(e.center, e.width, e.height, e.rotation, e.cornerRadius);
     case "circle":
@@ -655,8 +679,8 @@ export function toPrims(e: Entity, ctx?: PrimContext, depth = 0): Prim[] {
     case "guide":
       return [{ t: "xline", p: e.point, d: normalize(e.dir) }];
     case "dimension":
-      // Dimensions are annotation; their drawn geometry comes from the dimension renderer.
-      return [];
+      // Lines, arrows and a text box, for hit-testing; built by kernel/dimensions via ctx.
+      return ctx?.dimPrims ? ctx.dimPrims(e) : [];
     case "symbol": {
       const def = symbolLookup(ctx, e.symbolId);
       if (!def || depth > 16) return [];

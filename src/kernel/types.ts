@@ -59,6 +59,16 @@ export interface WallEntity extends EntityBase {
   justify: Justify;
   /** Cavity/fill pattern id. */
   fill?: string;
+  /** Door/window openings: `at` = distance from `a` along the wall to the opening's centre. */
+  openings?: WallOpening[];
+}
+
+export interface WallOpening {
+  id: Id;
+  at: number;
+  width: number;
+  /** Symbol drawn in the opening (door swing, window), if any. */
+  symbolId?: Id;
 }
 
 export interface RectEntity extends EntityBase {

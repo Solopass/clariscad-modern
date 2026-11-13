@@ -1,7 +1,9 @@
 // Canvas drawing of entities and overlay marks. All points go through the
 // camera in float64; the canvas only ever sees screen pixels.
-import type { Entity, Layer, SymbolDef, Id } from "../kernel/types";
-import { type Prim, type PrimContext, flattenPrim, primEnds, primsOf } from "../kernel/prims";
+import type { DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
+import { type DimStyle, dimGeometry } from "../kernel/dimensions";
+import { handlesOf } from "../kernel/handles";
+import { type Prim, type PrimContext, flattenPrim, primsOf } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
 import { type Camera, viewBox, worldToScreen } from "./camera";
 
@@ -181,9 +183,12 @@ export interface DrawContext {
   symbols: PrimContext;
   /** Show pen weights at their paper width (otherwise every line is a hairline). */
   showWeights: boolean;
+  dimStyle: DimStyle;
+  units: UnitSystem;
 }
 
 export function strokeEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawContext, override?: { color?: string; width?: number; dash?: number[] }) {
+  if (e.kind === "dimension") return drawDimension(ctx, e, dc, override?.color);
   const layer = dc.layers.get(e.layerId);
   const isGuide = e.kind === "guide";
   ctx.strokeStyle = override?.color ?? (isGuide ? dc.theme.guide : (e.style?.color ?? layer?.color ?? dc.theme.ink));
@@ -207,29 +212,52 @@ export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<E
 
 // ---------------------------------------------------------------- overlay marks
 
-/** Classic black square selection handles at an entity's key points. */
-export function handlePoints(e: Entity, symbols?: PrimContext): Vec2[] {
-  switch (e.kind) {
-    case "line":
-    case "doubleLine":
-    case "wall":
-      return [e.a, e.b];
-    case "polyline":
-    case "polygon":
-    case "spline":
-      return e.points;
-    case "circle":
-      return [e.center, { x: e.center.x + e.r, y: e.center.y }, { x: e.center.x, y: e.center.y + e.r }, { x: e.center.x - e.r, y: e.center.y }, { x: e.center.x, y: e.center.y - e.r }];
-    case "guide":
-      return [e.point];
-    case "symbol":
-      return [e.position];
-    default: {
-      const pts: Vec2[] = [];
-      for (const p of primsOf(e, symbols)) pts.push(...primEnds(p));
-      if (e.kind === "arc" || e.kind === "ellipse" || e.kind === "rect") pts.push(e.center);
-      return pts;
-    }
+/** Classic black square selection handles at an entity's key points (the grip handles). */
+export function handlePoints(e: Entity): Vec2[] {
+  return handlesOf(e).map((h) => h.p);
+}
+
+/** Dimension: extension/dimension lines, arrowheads and upright text. */
+export function drawDimension(ctx: CanvasRenderingContext2D, e: DimensionEntity, dc: DrawContext, color?: string) {
+  const layer = dc.layers.get(e.layerId);
+  const g = dimGeometry(e, layer?.scale ?? 1, dc.dimStyle, dc.units);
+  const ink = color ?? e.style?.color ?? layer?.color ?? dc.theme.ink;
+  ctx.strokeStyle = ink;
+  ctx.fillStyle = ink;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for (const [a, b] of g.lines) {
+    const p = worldToScreen(dc.cam, a);
+    const q = worldToScreen(dc.cam, b);
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(q.x, q.y);
+  }
+  for (const a of g.arcs) tracePrim(ctx, dc.cam, { t: "arc", c: a.c, r: a.r, start: a.start, sweep: a.sweep });
+  ctx.stroke();
+  for (const poly of g.arrows) {
+    ctx.beginPath();
+    poly.forEach((p, i) => {
+      const s = worldToScreen(dc.cam, p);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.closePath();
+    if (g.filledArrows) ctx.fill();
+    else ctx.stroke();
+  }
+  const t = g.text;
+  const px = t ? t.height * dc.cam.zoom : 0;
+  if (t && px >= 3) {
+    const s = worldToScreen(dc.cam, t.pos);
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(-t.angle); // world y-up → screen y-down
+    ctx.font = `${px}px "Geneva", "Helvetica Neue", Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t.str, 0, 0);
+    ctx.restore();
   }
 }
 

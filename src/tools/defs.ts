@@ -2,8 +2,11 @@
 // clicks it takes and how to build the shape from those points. The cursor
 // is passed as the last point while previewing, so the same build() drives
 // both the rubber band and the final entity.
-import type { Entity } from "../kernel/types";
+import type { CadDocument, Entity, Id } from "../kernel/types";
 import type { Prim } from "../kernel/prims";
+import type { EntityIndex } from "../kernel/spatialIndex";
+import type { Patch } from "../state/ops";
+import { EDIT_TOOLS } from "./editTools";
 import {
   arc3P,
   arcStartEndRadius,
@@ -25,6 +28,15 @@ export interface BuildCtx {
   settings: ToolSettings;
   /** Nearest primitive to a point (for methods that pick existing geometry). */
   primAt(p: Vec2): Prim | null;
+  /** Nearest visible, unlocked entity to a point (within the pick radius). */
+  entityAt(p: Vec2): Entity | null;
+  /** Entities the snap engine reported for each placed point (same order as pts). */
+  pickIds: (Id[] | undefined)[];
+  doc(): CadDocument;
+  index(): EntityIndex;
+  newId(): Id;
+  /** Pick radius in world units. */
+  tolerance: number;
 }
 
 export interface MethodDef {
@@ -36,10 +48,16 @@ export interface MethodDef {
   min?: number;
   /** Freehand: press, drag, release. */
   freehand?: boolean;
+  /** Indices of clicks that pick an entity (raw cursor, must hit something) rather than a point. */
+  rawPicks?: number[];
   /** Status-line prompt for the next click (index = points placed so far). */
   prompts: string[];
-  /** Hint for the HUD: what typed Length/Angle mean for this method. */
-  build(pts: Vec2[], ctx: BuildCtx): Shape | null;
+  /** Drawing methods: the new shape(s) from the points. */
+  build?(pts: Vec2[], ctx: BuildCtx): Shape | Shape[] | null;
+  /** Editing methods: a patch from the points (called once all points are placed). */
+  edit?(pts: Vec2[], ctx: BuildCtx): Patch | null;
+  /** Editing methods: what to show while the cursor is the last point. */
+  preview?(pts: Vec2[], ctx: BuildCtx): { shapes?: Shape[]; highlight?: Shape[] };
 }
 
 export interface ToolDef {
@@ -59,12 +77,16 @@ const rectFromCorners = (a: Vec2, b: Vec2, radius: number): Shape | null => {
   return { kind: "rect", center: mid(a, b), width: w, height: h, rotation: 0, cornerRadius: radius };
 };
 
-export const TOOLS: ToolDef[] = [
+const DRAW_TOOLS: ToolDef[] = [
   {
     id: "select",
     label: "Selection",
     key: "v",
-    methods: [{ id: "pick", label: "Pick / Marquee", points: 0, prompts: ["Click to select, drag for a marquee (left→right inside, right→left crossing)"], build: () => null }],
+    methods: [
+      { id: "pick", label: "Pick / Marquee", points: 0, prompts: ["Click to select, drag for a marquee (left→right inside, right→left crossing); drag a handle to reshape"] },
+      { id: "lasso", label: "Lasso", points: 0, prompts: ["Drag a loop around what to select"] },
+      { id: "polygon", label: "Polygon", points: 0, prompts: ["Click the corners of an area; Enter or double-click to select inside it"] },
+    ],
   },
   {
     id: "line",
@@ -338,6 +360,11 @@ export const TOOLS: ToolDef[] = [
     ],
   },
 ];
+
+const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer"];
+const ALL = [...DRAW_TOOLS, ...EDIT_TOOLS];
+/** Tools in palette order. */
+export const TOOLS: ToolDef[] = ORDER.map((id) => ALL.find((t) => t.id === id)!);
 
 export const toolDef = (id: ToolId) => TOOLS.find((t) => t.id === id)!;
 export const methodDef = (tool: ToolId, method: string) => {

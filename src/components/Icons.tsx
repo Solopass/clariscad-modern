@@ -26,6 +26,49 @@ export function ToolIcon({ id }: { id: ToolId }) {
         return <path d="M2 14 C 6 2, 10 18, 18 5" {...S} />;
       case "guide":
         return <path d="M1 10 L19 10 M10 1 L10 19" {...S} strokeDasharray="2 2" strokeWidth={1} />;
+      case "wall":
+        return (
+          <g>
+            <path d="M3 17 L3 3 L17 3 M7 17 L7 7 L17 7" {...S} />
+            <path d="M3 3 L7 7" {...S} strokeWidth={1} />
+          </g>
+        );
+      case "dimension":
+        return (
+          <g>
+            <path d="M3 6 L3 16 M17 6 L17 16 M3 12 L17 12" {...S} strokeWidth={1} />
+            <path d="M3 12 L6 10.5 L6 13.5 Z M17 12 L14 10.5 L14 13.5 Z" fill="currentColor" stroke="none" />
+          </g>
+        );
+      case "trim":
+        return (
+          <g>
+            <path d="M10 2 L10 18" {...S} />
+            <path d="M2 10 L10 10" {...S} />
+            <path d="M10 10 L18 10" {...S} strokeDasharray="2 2" strokeWidth={1} />
+          </g>
+        );
+      case "extend":
+        return (
+          <g>
+            <path d="M17 2 L17 18" {...S} />
+            <path d="M2 10 L9 10" {...S} />
+            <path d="M9 10 L16 10" {...S} strokeDasharray="2 2" strokeWidth={1} />
+          </g>
+        );
+      case "split":
+        return (
+          <g>
+            <path d="M2 10 L8 10 M12 10 L18 10" {...S} />
+            <path d="M10 5 L10 15" {...S} strokeWidth={1} />
+          </g>
+        );
+      case "offset":
+        return <path d="M3 14 C 7 6, 13 6, 17 14 M3 18 C 7 10, 13 10, 17 18" {...S} />;
+      case "fillet":
+        return <path d="M4 18 L4 10 A 6 6 0 0 1 10 4 L18 4" {...S} />;
+      case "chamfer":
+        return <path d="M4 18 L4 10 L10 4 L18 4" {...S} />;
     }
   })();
   return (

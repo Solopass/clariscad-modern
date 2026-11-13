@@ -71,7 +71,60 @@ Not yet: one-shot modifier hotkeys mid-command, parallel-offset and perpendicula
 arc tangent-to-entity, lasso/polygon select and vertex reshape (M3), layer UI (M4).
 Waiting on the owner's reference copy of the original program to match the look and behaviour.
 
-### Milestones 3–5
+### Milestone 3: editing, walls, dimensions (done 2026-11-13)
+
+- [x] Path model, trim (with hover preview of the piece), split, extend, offset (line/arc/circle/rect/polygon/polyline)
+- [x] Fillet (line-line incl. radius 0, line/arc/circle via tangent circles) and chamfer (2 distances or distance + angle); trim both / first / none
+- [x] Smart walls: L corners, T joins, X crossings, openings; continuous walls; Opening method
+- [x] Grip editing of every entity kind; Select gains Lasso and Polygon methods
+- [x] Associative dimensions: horizontal, vertical, aligned, chain, baseline, angular, radius, diameter, center mark;
+      follow moves/grips/rotations in the same undo step, re-attach by position after trims, detach when the point is gone
+- [x] Drafting-standard presets for dimension appearance (ANSI default; ISO/DIN/JIS/BS308 defined, picker comes in M4)
+- [x] Arrange: Duplicate (Ctrl+D), Step and Repeat, Polar Array, Rotate, Scale, Flip H/V, Bring to Front / Send to Back
+- [x] Fixed two M2 bugs found in the browser: drags never reached the Select tool (moves were only forwarded for
+      freehand), and a disposed viewport (React StrictMode double mount) kept its canvas listeners and acted twice
+
+New keys: W wall, M dimension, T trim, X extend, K split, O offset, I fillet, H chamfer, Ctrl+D duplicate.
+Dev hook: `window.__stores.doc` / `.tool` and `window.__cad` (use these from the console; `import()` can load a second copy).
+
+Known gaps: splines can't be trimmed/split/offset yet; ellipse offset unsupported; 3+ walls meeting at one point are
+left unmitred; extend works on lines, arcs and straight polyline ends; fillet of two arcs picks the minor fillet arc.
+
+Design notes (as built):
+
+Design:
+- **Path model** (`kernel/path.ts`): line, polyline (with bulges), polygon, rect, circle, arc and
+  ellipse map to a chain of primitives with one global parameter s ∈ [0, n] (prim i covers [i, i+1]).
+  Trim/split/extend cut that range and rebuild entities from sub-ranges (one seg → line, one arc →
+  arc, full arc → circle, one ell → partial ellipse, mixed → polyline with bulges). Rect/polygon
+  become polylines once cut. The first piece keeps the original id. Splines are not editable this way yet.
+- **Edits** (`kernel/booleanOps.ts`, pure): trimAt(target, pick, cutters), extendTo(target, pick,
+  boundaries), splitAt(target, point), offset(entity, distance, sidePoint), fillet(e1, pick1, e2,
+  pick2, r, trimMode), chamfer(e1, pick1, e2, pick2, d1, d2 | d1+angle). Lines and arcs for
+  fillet/chamfer; offset for line/arc/circle/polyline/rect/polygon.
+- **Transforms** (`kernel/edit.ts`): transformEntity(e, T) for any similarity incl. mirror
+  (rotate, flip, scale, arrays).
+- **Walls** (`kernel/wallSolver.ts`): whole-document solve → Map<wallId, Prim[]>. L corners
+  (shared endpoint: faces meet), T joins (end inside another wall's band: faces run to its near
+  face, which gets a gap), X crossings (faces removed inside the other band), openings
+  (`WallEntity.openings`, jambs). Stored in `index.ctx.wallPrims`, recomputed in applyOps
+  whenever a wall changes; wall prims bypass the prim cache.
+- **Associative dimensions** (`kernel/dimensions.ts`): refs name entity handles ("a", "b", "mid",
+  "center", "start", "end", "vertex:i", "quad:k"); handle chosen by matching the snapped point
+  against the entity's handle points. `withDependents(doc, patch)` appends replace ops that
+  recompute dimension points for every entity the patch changes (refs to removed entities are
+  dropped, points kept), so associativity is part of the same undo step. Geometry (extension lines,
+  dimension line, arrows, text) is built from a DimStyle (ANSI defaults; M4 adds the other
+  standards); paper sizes × layer scale. Types: horizontal, vertical, aligned, chain, baseline,
+  angular, radius, diameter, center mark.
+- **Grips** (`kernel/grips.ts`): handles(e) and moveHandle(e, handle, p) per kind; Select drags a
+  handle of a selected entity with snapping, one replace on release.
+- **Tools**: Trim, Extend, Split, Offset, Fillet, Chamfer, Wall (center/left/right, continuous,
+  opening), Dimension; Select gains Lasso and Polygon methods.
+- **Arrange menu**: Duplicate, Step & Repeat (N × ΔX, ΔY), Polar Array (N over θ about a point),
+  Rotate, Flip H/V, Bring to Front / Send to Back (reorder op).
+
+### Milestones 4–5
 
 See `ARCHITECTURE.md` §5.
 

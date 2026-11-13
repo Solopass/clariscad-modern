@@ -4,6 +4,8 @@
 import type { Entity, Id } from "../kernel/types";
 import { snap, type SnapResult } from "../kernel/snapEngine";
 import { entityBBox, unionBox } from "../kernel/prims";
+import { STANDARDS } from "../kernel/dimensions";
+import { duplicate } from "../state/arrange";
 import { type Vec2, dist } from "../kernel/vec";
 import { useDocumentStore, newId } from "../state/useDocumentStore";
 import { useToolStore, type ToolId } from "../state/useToolStore";
@@ -86,6 +88,16 @@ export class ViewportController {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     this.unsubs.forEach((u) => u());
+    // Every listener must go: React StrictMode mounts twice in dev, and a disposed
+    // controller left listening would act on clicks a second time.
+    const o = this.over;
+    o.removeEventListener("pointerdown", this.onDown);
+    o.removeEventListener("pointermove", this.onMove);
+    o.removeEventListener("pointerup", this.onUp);
+    o.removeEventListener("pointerleave", this.onLeave);
+    o.removeEventListener("dblclick", this.onDbl);
+    o.removeEventListener("wheel", this.onWheel);
+    o.removeEventListener("contextmenu", this.onContext);
     window.removeEventListener("keydown", this.onKey);
     window.removeEventListener("keyup", this.onKeyUp);
   }
@@ -107,7 +119,7 @@ export class ViewportController {
 
   private makeTool(): Tool {
     const { tool, methods } = useToolStore.getState();
-    if (tool === "select") return new SelectTool(this.toolContext());
+    if (tool === "select") return new SelectTool(this.toolContext(), methods.select as "pick" | "lasso" | "polygon");
     return new DrawTool(methodDef(tool, methods[tool]), this.toolContext());
   }
 
@@ -161,20 +173,20 @@ export class ViewportController {
     // Shift constrains to 45° steps (or the angle-lock step if that modifier is on).
     if (shift && from) modifiers.angle = true;
     const angleStep = ((modifiers.angle && !ts.modifiers.angle ? 45 : ts.settings.angleStep) * Math.PI) / 180;
-    const wantsSnap = !(this.tool instanceof SelectTool) || this.tool.busy();
+    const wantsSnap = this.tool.wantsSnap();
     const res = wantsSnap
       ? snap(raw, ds.index, { modifiers, tolerance: PICK_PX / this.cam.zoom, grid: { spacing: ts.settings.gridSpacing }, angleStep }, {
           from,
           anchors: this.anchors,
           exclude: this.tool.snapExclude() as Set<Id> | undefined,
-          filter: (e) => layers.get(e.layerId)?.visible !== false,
+          filter: (e) => e.kind !== "dimension" && layers.get(e.layerId)?.visible !== false,
         })
       : null;
     this.lastSnap = res;
     if (res && ["endpoint", "midpoint", "center", "intersection", "quadrant"].includes(res.kind)) {
       if (!this.anchors.some((a) => dist(a, res.point) < 1e-9)) this.anchors = [res.point, ...this.anchors].slice(0, 6);
     }
-    const info: PointerInfo = { p: res?.point ?? raw, raw, screen, shift, alt, ctrl };
+    const info: PointerInfo = { p: res?.point ?? raw, raw, screen, shift, alt, ctrl, ids: res?.entityIds };
     this.lastInfo = info;
     return info;
   }
@@ -221,7 +233,11 @@ export class ViewportController {
     }
     if (ev.button !== 0) return;
     const info = this.info(ev);
-    if (info) this.tool.up(info);
+    if (info) {
+      // Deliver the final position before the release (moves are otherwise once per frame).
+      if (this.tool.busy()) this.tool.move(info);
+      this.tool.up(info);
+    }
     this.mark("overlay");
   };
 
@@ -277,6 +293,12 @@ export class ViewportController {
       ev.preventDefault();
       this.tool.cancel();
       ds.redo();
+      return;
+    }
+    if (ctrl && (ev.key === "d" || ev.key === "D")) {
+      ev.preventDefault();
+      const g = useToolStore.getState().settings.gridSpacing;
+      duplicate({ x: g, y: -g });
       return;
     }
     if (ctrl && (ev.key === "a" || ev.key === "A")) {
@@ -343,6 +365,8 @@ export class ViewportController {
       layers: new Map(ds.doc.layers.map((l) => [l.id, l])),
       symbols: ds.index.ctx ?? {},
       showWeights: useToolStore.getState().settings.showWeights,
+      dimStyle: STANDARDS[ds.doc.standard] ?? STANDARDS.ANSI,
+      units: ds.doc.units,
     };
   }
 
@@ -378,17 +402,37 @@ export class ViewportController {
     const dc = this.drawContext();
     const ds = useDocumentStore.getState();
     const info = this.pointer ? this.computeInfo() : null;
+    // Drags (move, grip, marquee, lasso) see the snapped pointer once per frame.
+    if (info && this.tool.busy()) this.tool.move(info);
 
     // Selection handles.
     for (const id of ds.selection) {
       const e = ds.index.get(id);
-      if (e) drawHandles(ctx, this.cam, handlePoints(e, dc.symbols));
+      if (e) drawHandles(ctx, this.cam, handlePoints(e));
     }
 
     const ov = this.tool.overlay(info);
     for (const s of ov.shapes) {
       const ent = { ...s, id: "preview", layerId: "" } as Entity;
       strokeEntity(ctx, ent, dc, { color: CLASSIC.preview, width: 1, dash: s.kind === "guide" ? [4, 4] : [] });
+    }
+    for (const s of ov.highlight) {
+      const ent = { ...s, id: "preview", layerId: "" } as Entity;
+      strokeEntity(ctx, ent, dc, { color: CLASSIC.snap, width: 2, dash: [5, 3] });
+    }
+    if (ov.outline && ov.outline.length > 1) {
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ov.outline.forEach((p, i) => {
+        const q = worldToScreen(this.cam, p);
+        if (i === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     for (const p of ov.points) {
       const q = worldToScreen(this.cam, p);

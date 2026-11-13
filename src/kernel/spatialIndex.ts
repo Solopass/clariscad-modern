@@ -2,7 +2,7 @@
 // Guides) live in a side list and are returned by every query.
 import RBush from "rbush";
 import type { BBox, Entity, Id } from "./types";
-import { type PrimContext, closestOnPrim, entityBBox, isUnbounded, primsOf } from "./prims";
+import { type PrimContext, bandOffsets, closestOnPrim, entityBBox, isUnbounded, primsOf } from "./prims";
 import type { Vec2 } from "./vec";
 
 interface Item extends BBox {
@@ -139,6 +139,17 @@ export class EntityIndex {
 
   /** Exact distance from a point to an entity's geometry. */
   distanceTo(e: Entity, p: Vec2): number {
+    if (e.kind === "wall") {
+      const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+      if (len > 0) {
+        const dx = (e.b.x - e.a.x) / len;
+        const dy = (e.b.y - e.a.y) / len;
+        const u = (p.x - e.a.x) * dx + (p.y - e.a.y) * dy;
+        const o = -(p.x - e.a.x) * dy + (p.y - e.a.y) * dx;
+        const [lo, hi] = bandOffsets(e.thickness, e.justify);
+        if (u >= 0 && u <= len && o >= lo && o <= hi) return 0;
+      }
+    }
     let best = Infinity;
     for (const prim of primsOf(e, this.ctx)) best = Math.min(best, closestOnPrim(prim, p).distance);
     return best;
