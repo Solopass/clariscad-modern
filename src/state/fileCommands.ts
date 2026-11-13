@@ -9,6 +9,7 @@ import { entityBBox, unionBox } from "../kernel/prims";
 import { STANDARDS } from "../kernel/dimensions";
 import { CLASSIC, drawEntities } from "../canvas/render";
 import { sheetBounds } from "./sheetModel";
+import { titleBlockLocal } from "./titleBlock";
 import { pdfBytes } from "../io/pdfWriter";
 import { isTauri, openFile, saveFile } from "../io/platform";
 import { clearRecovery } from "../io/recovery";
@@ -158,7 +159,7 @@ export const plotLayout = (o: PdfOptions) => sheetLayout(plotExtent(), o);
 
 export function previewPdf(o: PdfOptions) {
   const used = plotLayout(o).scale;
-  return plotPdf(displayList(used), { ...o, title: stem(store().fileName) });
+  return plotPdf(displayList(used), { ...o, title: stem(store().fileName), titleBlock: titleBlockLocal(store().doc) });
 }
 
 export async function exportPdfFile(o: PdfOptions) {

@@ -11,6 +11,7 @@ import { runCommand } from "../input/runCommand";
 import { type Vec2, dist } from "../kernel/vec";
 import { useDocumentStore, newId } from "../state/useDocumentStore";
 import { editDimensionText } from "../state/dimEdit";
+import { enterSymbolEdit } from "../state/symbolEdit";
 import { useToolStore } from "../state/useToolStore";
 import { useCursorStore } from "../state/useCursorStore";
 import { methodDef, type Shape } from "../tools/defs";
@@ -22,6 +23,7 @@ import {
   drawCrosshair,
   drawEntities,
   drawGrid,
+  drawTitleBlock,
   drawGuides,
   drawHandles,
   drawSnapBadge,
@@ -205,13 +207,14 @@ export class ViewportController {
     // Shift constrains to 45° steps (or the angle-lock step if that modifier is on).
     if (shift && from) modifiers.angle = true;
     const angleStep = ((modifiers.angle && !ts.modifiers.angle ? 45 : ts.settings.angleStep) * Math.PI) / 180;
+    const editing = new Set(ds.doc.entities.flatMap((e) => (e.bufferInst ? [e.bufferInst] : [])));
     const wantsSnap = this.tool.wantsSnap();
     let res = wantsSnap
       ? snap(raw, ds.index, { modifiers, tolerance: PICK_PX / this.cam.zoom, grid: { spacing: ts.settings.gridSpacing }, angleStep }, {
           from,
           anchors: this.anchors,
           exclude: this.tool.snapExclude() as Set<Id> | undefined,
-          filter: (e) => e.kind !== "dimension" && layers.get(e.layerId)?.visible !== false,
+          filter: (e) => e.kind !== "dimension" && !editing.has(e.id) && layers.get(e.layerId)?.visible !== false,
         })
       : null;
     const busy = this.tool.busy();
@@ -318,6 +321,11 @@ export class ViewportController {
       }
       if (hit?.kind === "dimension") {
         editDimensionText(hit);
+        return;
+      }
+      if (hit?.kind === "symbol" && !ds.doc.entities.some((e) => e.bufferInst === hit.id)) {
+        ds.setSelection([hit.id]);
+        enterSymbolEdit();
         return;
       }
     }
@@ -441,7 +449,9 @@ export class ViewportController {
       const ctx = setupCanvas(this.stat, width, height);
       const ds = useDocumentStore.getState();
       const visible = new Set(ds.index.spatial.search(viewBox(this.cam)));
-      drawEntities(ctx, ds.doc.entities.filter((e) => visible.has(e.id)), this.drawContext());
+      const editing = new Set(ds.doc.entities.flatMap((e) => (e.bufferInst ? [e.bufferInst] : [])));
+      drawEntities(ctx, ds.doc.entities.filter((e) => visible.has(e.id) && !editing.has(e.id)), this.drawContext());
+      drawTitleBlock(ctx, this.cam, ds.doc);
       this.dirty.static = false;
     }
     if (this.dirty.overlay) {

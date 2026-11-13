@@ -1,6 +1,6 @@
 // Canvas drawing of entities and overlay marks. All points go through the
 // camera in float64; the canvas only ever sees screen pixels.
-import type { DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
+import type { CadDocument, DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
 import { type DimStyle, dimGeometry } from "../kernel/dimensions";
 import { textWidth } from "../kernel/textMetrics";
 import { type GripCtx, gripsOf } from "../kernel/handles";
@@ -10,6 +10,8 @@ import { type Prim, type PrimContext, entityBBox, flattenPrim, primsOf, symbolTe
 import type { Vec2 } from "../kernel/vec";
 import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
 import { type Camera, viewBox, worldToScreen } from "./camera";
+import { titleBlockLocal } from "../state/titleBlock";
+import { activeScale, sheetPages } from "../state/sheetModel";
 
 export const DASH_PATTERNS: Record<string, number[]> = {
   solid: [],
@@ -535,3 +537,38 @@ export function drawCrosshair(ctx: CanvasRenderingContext2D, cam: Camera, p: Vec
 }
 
 export const symbolsCtx = (defs: SymbolDef[]): PrimContext => ({ symbols: new Map(defs.map((d) => [d.id, d])) });
+
+/** Title block in the lower-right of every page. Same geometry the plot uses. */
+export function drawTitleBlock(ctx: CanvasRenderingContext2D, cam: Camera, doc: CadDocument) {
+  const local = titleBlockLocal(doc);
+  const k = activeScale(doc);
+  ctx.save();
+  ctx.strokeStyle = "#000";
+  ctx.fillStyle = "#000";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.lineJoin = "miter";
+  for (const page of sheetPages(doc)) {
+    const ox = page.x + page.w - (local.w + 8) * k;
+    const oy = page.y + 8 * k;
+    const W = (p: Vec2) => worldToScreen(cam, { x: ox + p.x * k, y: oy + p.y * k });
+    ctx.beginPath();
+    for (const [a, b] of local.lines) {
+      const A = W(a);
+      const B = W(b);
+      ctx.moveTo(A.x, A.y);
+      ctx.lineTo(B.x, B.y);
+    }
+    ctx.stroke();
+    for (const t of local.texts) {
+      const px = t.h * k * cam.zoom;
+      if (px < 2) continue;
+      const p = W(t.pos);
+      ctx.font = `${px}px ${TEXT_FONT}`;
+      ctx.textAlign = t.align;
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(t.str, p.x, p.y);
+    }
+  }
+  ctx.restore();
+}

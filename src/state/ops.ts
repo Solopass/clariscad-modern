@@ -2,7 +2,7 @@
 // typed ops. applyOps() is the only function that changes a document; it
 // updates the CadDocument (immutably) and the EntityIndex together, and is
 // used for commit, undo, redo and file load alike.
-import type { CadDocument, DraftingStandard, Entity, Id, Layer, Sheet, SymbolDef, UnitSystem, WallEntity } from "../kernel/types";
+import type { CadDocument, DraftingStandard, Entity, Id, Layer, Sheet, SymbolDef, TitleBlock, UnitSystem, WallEntity } from "../kernel/types";
 import type { EntityIndex } from "../kernel/spatialIndex";
 import type { WallSolveEntry } from "../kernel/prims";
 import { type Transform2D, invert as invertT } from "../kernel/transform";
@@ -34,6 +34,7 @@ export interface DocProps {
   units?: UnitSystem;
   standard?: DraftingStandard;
   sheet?: Sheet;
+  titleBlock?: TitleBlock;
 }
 
 export interface Patch {
@@ -78,7 +79,7 @@ export function applyOps(doc: CadDocument, index: EntityIndex, ops: Op[]): CadDo
   let layers = doc.layers;
   let symbols = doc.symbols;
   let activeLayerId = doc.activeLayerId;
-  let props: DocProps = { units: doc.units, standard: doc.standard, sheet: doc.sheet };
+  let props: DocProps = { units: doc.units, standard: doc.standard, sheet: doc.sheet, titleBlock: doc.titleBlock };
   const touchedSymbols: Id[] = [];
   let wallsTouched = false;
   let layersTouched = false;
@@ -161,6 +162,7 @@ export function applyOps(doc: CadDocument, index: EntityIndex, ops: Op[]): CadDo
     units: props.units ?? doc.units,
     standard: props.standard ?? doc.standard,
     sheet: props.sheet,
+    titleBlock: props.titleBlock,
   };
   syncContext(next, index, { symbols: touchedSymbols, walls: wallsTouched, dims: layersTouched });
   return next;

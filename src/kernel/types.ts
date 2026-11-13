@@ -38,6 +38,13 @@ interface EntityBase {
   groups?: Id[];
   /** Locked objects stay snappable and visible, and are not selected or edited. Alt-click selects one. */
   locked?: boolean;
+  /**
+   * Set on the temporary copies shown while a symbol is edited in place.
+   * `bufferOf` is the symbol definition; `bufferInst` is the instance they stand in for.
+   * Stripped on save.
+   */
+  bufferOf?: Id;
+  bufferInst?: Id;
 }
 
 export interface LineEntity extends EntityBase {
@@ -275,6 +282,16 @@ export interface Sheet {
 /** Letter, landscape, one page. The active layer's scale turns this into model size. */
 export const DEFAULT_SHEET: Sheet = { paperId: "letter", landscape: true, pagesX: 1, pagesY: 1 };
 
+/** Fields in the sheet's title block. Missing means the block still draws, with blanks. */
+export interface TitleBlock {
+  title: string;
+  drawnBy: string;
+  date: string;
+  /** Blank shows the active layer's scale. */
+  scale: string;
+  sheetNo: string;
+}
+
 /** A whole drawing, as saved in .tcad. */
 export interface CadDocument {
   /** File-format version; bump on breaking schema changes and add a migration. */
@@ -288,6 +305,8 @@ export interface CadDocument {
   symbols: SymbolDef[];
   /** Missing on older files; readers fill in {@link DEFAULT_SHEET}. */
   sheet?: Sheet;
+  /** Title, drawn by, date, scale and sheet number, drawn on every page. */
+  titleBlock?: TitleBlock;
 }
 
 export const DOCUMENT_VERSION = 1;
