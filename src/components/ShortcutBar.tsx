@@ -5,7 +5,7 @@ const mac = typeof navigator !== "undefined" && navigator.platform.toLowerCase()
 
 function Keycap({ text }: { text: string }) {
   return (
-    <kbd className="mr-1 inline-block min-w-[1.1em] rounded-[3px] border border-black bg-[#f7f7f7] px-[3px] text-center font-mono text-[10px] leading-[14px] shadow-[0_1px_0_#000]">
+    <kbd className="mr-0.5 inline-block min-w-[1em] rounded-[2px] border border-black bg-[#f7f7f7] px-[2px] text-center font-mono text-[9px] leading-[12px] shadow-[0_1px_0_#000]">
       {text}
     </kbd>
   );
@@ -14,27 +14,23 @@ function Keycap({ text }: { text: string }) {
 export function ShortcutBar({ onClose }: { onClose(): void }) {
   const all = panelShortcuts();
   return (
-    <div className="flex h-[78px] shrink-0 items-stretch gap-3 overflow-x-auto border-t border-black bg-white px-2 py-1" aria-label="Keyboard shortcuts">
+    <div data-shortcut-bar className="flex shrink-0 flex-wrap content-start items-center gap-x-1.5 gap-y-0 overflow-x-hidden border-t border-black bg-white px-1.5 py-0.5" aria-label="Keyboard shortcuts">
       {SECTIONS.map((section) => {
         const items = all.filter((s) => s.section === section);
         if (!items.length) return null;
         return (
-          <section key={section} className="shrink-0 border-r border-[#ddd] pr-3">
-            <div className="flex items-baseline gap-2">
-              <b className="text-[10px] tracking-wide uppercase">{section}</b>
-            </div>
-            <div className="grid grid-flow-col grid-rows-3 gap-x-3">
-              {items.map((s) => (
-                <div key={s.id} className="flex items-center whitespace-nowrap text-[11px]" title={s.remap}>
-                  <Keycap text={chordLabel(s.chord, mac)} />
-                  <span>{s.label}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          <div key={section} className="contents">
+            <b className="text-[9px] tracking-wide uppercase text-[#555]">{section}</b>
+            {items.map((s) => (
+              <span key={s.id} className="inline-flex items-center whitespace-nowrap text-[10px] leading-[16px]" title={s.remap}>
+                <Keycap text={chordLabel(s.chord, mac)} />
+                <span className="mr-0.5">{s.label}</span>
+              </span>
+            ))}
+          </div>
         );
       })}
-      <button className="mac-btn sticky right-0 self-start bg-white" onClick={onClose} title="Hide shortcuts">
+      <button className="mac-btn" onClick={onClose} title="Hide shortcuts">
         Hide
       </button>
     </div>

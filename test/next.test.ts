@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { DimensionEntity, Entity, WallEntity } from "../src/kernel/types";
+import { dist } from "../src/kernel/vec";
 import { STANDARDS, dimGeometry, flipDimension } from "../src/kernel/dimensions";
 import { gripsOf, moveHandle } from "../src/kernel/handles";
 import { formatLength } from "../src/kernel/units";
 import { newDocument, useDocumentStore } from "../src/state/useDocumentStore";
 import { translation } from "../src/kernel/transform";
 import { matchShortcut } from "../src/input/keymap";
+import { applyMatch } from "../src/state/match";
+import { toolDef } from "../src/tools/defs";
 import { solveWalls } from "../src/kernel/wallSolver";
+import { setTitleBlock, titleBlockLocal } from "../src/state/titleBlock";
+import { buildDisplayList, PAPER_SIZES } from "../src/io/plot";
+import { plotPdf } from "../src/io/pdfPlotter";
+import { exportDxf, importDxf } from "../src/io/dxfCodec";
+import { parseDocument, serializeDocument } from "../src/io/nativeJson";
+import { makeSymbol } from "../src/state/symbols";
+import { enterSymbolEdit, exitSymbolEdit } from "../src/state/symbolEdit";
 
 const S = () => useDocumentStore.getState();
 const grip = { scale: 1, units: "mm" as const, standard: "ANSI" as const };
@@ -94,6 +104,98 @@ describe("dimension editing", () => {
   test("flip and dimension text have shortcuts", () => {
     expect(matchShortcut({ key: "f", ctrlKey: false, metaKey: false, shiftKey: true, altKey: true })?.id).toBe("dim.flip");
     expect(matchShortcut({ key: "t", ctrlKey: false, metaKey: false, shiftKey: true, altKey: true })?.id).toBe("dim.text");
+  });
+});
+
+describe("match properties", () => {
+  test("copies only the checked properties", () => {
+    const src: Entity = { id: "s", layerId: "layer-2", kind: "line", a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, style: { penWeight: 0.7, dash: "dashed", startEnding: "arrow", endEnding: "dot", fill: "ansi31" } };
+    const dst: Entity = { id: "t", layerId: "layer-1", kind: "line", a: { x: 0, y: 1 }, b: { x: 2, y: 1 }, style: { penWeight: 0.25, dash: "solid" } };
+    const pen = applyMatch(src, dst, { pen: true, dash: false, endings: false, fill: false, layer: false })!;
+    expect(pen.style?.penWeight).toBe(0.7);
+    expect(pen.style?.dash).toBe("solid");
+    expect(pen.layerId).toBe("layer-1");
+    const all = applyMatch(src, dst, { pen: true, dash: true, endings: true, fill: true, layer: true })!;
+    expect(all.layerId).toBe("layer-2");
+    expect(all.style).toMatchObject({ dash: "dashed", startEnding: "arrow", endEnding: "dot", fill: "ansi31" });
+    expect(applyMatch(src, dst, { pen: false, dash: false, endings: false, fill: false, layer: false })).toBeNull();
+  });
+
+  test("the eyedropper is a tool with a key", () => {
+    const tool = toolDef("match");
+    expect(tool.key).toBe("n");
+    expect(tool.methods.map((m) => m.id)).toEqual(["selection", "pick"]);
+    expect(matchShortcut({ key: "n", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false })?.id).toBe("tool:match");
+  });
+});
+
+describe("title block", () => {
+  test("fields are undoable, drawn from one layout, and land on the PDF page", () => {
+    setTitleBlock({ title: "Kitchen", drawnBy: "Ada", date: "13 Nov 2026", scale: "1:48", sheetNo: "3" });
+    const words = titleBlockLocal(S().doc).texts.map((t) => t.str);
+    expect(words).toEqual(["Kitchen", "Ada", "13 Nov 2026", "1:48", "3"]);
+    const loaded = parseDocument(serializeDocument(S().doc));
+    expect(loaded.doc.titleBlock?.title).toBe("Kitchen");
+    expect(loaded.doc.titleBlock?.sheetNo).toBe("3");
+    const dl = buildDisplayList(S().doc, S().index.ctx!, 1);
+    const pdf = plotPdf(dl, { scale: 48, paper: PAPER_SIZES.find((p) => p.id === "letter")!, landscape: true, titleBlock: titleBlockLocal(S().doc) });
+    expect(pdf.pdf).toContain("Kitchen");
+    expect(pdf.pdf).toContain("Ada");
+    S().undo();
+    expect(S().doc.titleBlock).toBeUndefined();
+    expect(matchShortcut({ key: "b", ctrlKey: false, metaKey: false, shiftKey: true, altKey: true })?.id).toBe("layout.title");
+  });
+});
+
+describe("symbol editing", () => {
+  test("an edit updates the definition for every instance and undoes", () => {
+    add({ id: "l", layerId: "layer-1", kind: "line", a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    S().setSelection(["l"]);
+    const id = makeSymbol("Mark");
+    expect(id).toBeTruthy();
+    const inst = S().doc.entities.find((e) => e.kind === "symbol")!;
+    add({ ...inst, id: "i2", position: { x: 100, y: 0 } });
+    S().setSelection([inst.id]);
+    expect(enterSymbolEdit()).toBe(true);
+    expect(S().doc.entities.some((e) => e.bufferOf === id)).toBe(true);
+    const buf = S().doc.entities.find((e) => e.bufferOf && e.kind === "line") as Extract<Entity, { kind: "line" }>;
+    S().commit({ label: "Stretch", ops: [{ op: "replace", before: buf, after: { ...buf, b: { x: buf.b.x + 5, y: buf.b.y } } }] });
+    const child = S().doc.symbols.find((s) => s.id === id)!.entities.find((e) => e.kind === "line") as Extract<Entity, { kind: "line" }>;
+    expect(dist(child.a, child.b)).toBeCloseTo(15, 3);
+    S().undo();
+    const back = S().doc.symbols.find((s) => s.id === id)!.entities.find((e) => e.kind === "line") as Extract<Entity, { kind: "line" }>;
+    expect(dist(back.a, back.b)).toBeCloseTo(10, 3);
+    expect(exitSymbolEdit()).toBe(true);
+    expect(S().doc.entities.some((e) => e.bufferOf)).toBe(false);
+    expect(S().doc.entities.filter((e) => e.kind === "symbol")).toHaveLength(2);
+    expect(matchShortcut({ key: "e", ctrlKey: false, metaKey: false, shiftKey: true, altKey: true })?.id).toBe("symbol.edit");
+  });
+});
+
+describe("DXF annotations", () => {
+  test("arrows, hatches and dimensions survive a round trip", () => {
+    const { line, dim } = linearDim();
+    const marked: Entity = { ...line, style: { startEnding: "arrow", endEnding: "dot" } };
+    const hatched: Entity = { id: "r", layerId: "layer-1", kind: "rect", center: { x: 50, y: 40 }, width: 30, height: 20, rotation: 0, cornerRadius: 0, style: { fill: "ansi31" } };
+    const over: DimensionEntity = { ...dim, textOverride: "WIDTH", textShift: { x: 4, y: 2 } };
+    add(marked, hatched, over);
+    const dxf = exportDxf(S().doc, S().index.ctx!);
+    expect(dxf).toContain("\nHATCH\r\n");
+    expect(dxf).toContain("ANSI31");
+    expect(dxf).toContain("\nDIMENSION\r\n");
+    expect(dxf).toContain("start=arrow");
+    const back = importDxf(dxf);
+    const lineBack = back.doc.entities.find((e) => e.kind === "line") as Extract<Entity, { kind: "line" }>;
+    expect(lineBack.style?.startEnding).toBe("arrow");
+    expect(lineBack.style?.endEnding).toBe("dot");
+    const rect = back.doc.entities.find((e) => e.kind === "rect" || (e.kind === "polyline" && e.style?.fill) || (e.kind === "polygon" && e.style?.fill));
+    expect(rect?.style?.fill).toBe("ansi31");
+    const d = back.doc.entities.find((e) => e.kind === "dimension") as DimensionEntity;
+    expect(d.dimType).toBe("horizontal");
+    expect(d.textOverride).toBe("WIDTH");
+    expect(d.textShift!.x).toBeCloseTo(4, 4);
+    expect(dimGeometry(d, 1, STANDARDS.ANSI, "mm").value).toBeCloseTo(100, 3);
+    expect(back.doc.entities.filter((e) => e.kind === "dimension")).toHaveLength(1);
   });
 });
 
