@@ -14,7 +14,8 @@ export function useAppLifecycle() {
   useEffect(() => {
     const update = () => {
       const s = useDocumentStore.getState();
-      void setWindowTitle(`${s.fileName}${s.isDirty() ? " •" : ""} — TemariCad`);
+      const layer = s.doc.layers.find((l) => l.id === s.doc.activeLayerId);
+      void setWindowTitle(`${s.fileName} — ${layer?.name ?? "Layer"}${s.isDirty() ? " •" : ""} — TemariCad`);
     };
     update();
     return useDocumentStore.subscribe(update);

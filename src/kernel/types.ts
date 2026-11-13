@@ -23,6 +23,11 @@ interface EntityBase {
   id: Id;
   layerId: Id;
   style?: StyleRef;
+  /**
+   * Shared by every member of a group. Selecting, moving or copying one member
+   * treats the whole group as a single object; Ungroup clears it.
+   */
+  groupId?: Id;
 }
 
 export interface LineEntity extends EntityBase {
@@ -246,6 +251,18 @@ export type UnitSystem = "architectural" | "engineering" | "inches" | "feet" | "
 
 export type DraftingStandard = "ANSI" | "ISO" | "DIN" | "JIS" | "BS308";
 
+/** The sheet the drawing sits on. Pages tile from the origin (lower left) in +x/+y. */
+export interface Sheet {
+  /** A key of the paper-size table (letter, a4, …). */
+  paperId: string;
+  landscape: boolean;
+  pagesX: number;
+  pagesY: number;
+}
+
+/** Letter, landscape, one page. The active layer's scale turns this into model size. */
+export const DEFAULT_SHEET: Sheet = { paperId: "letter", landscape: true, pagesX: 1, pagesY: 1 };
+
 /** A whole drawing, as saved in .tcad. */
 export interface CadDocument {
   /** File-format version; bump on breaking schema changes and add a migration. */
@@ -257,6 +274,8 @@ export interface CadDocument {
   /** Draw order: later entities draw on top. */
   entities: Entity[];
   symbols: SymbolDef[];
+  /** Missing on older files; readers fill in {@link DEFAULT_SHEET}. */
+  sheet?: Sheet;
 }
 
 export const DOCUMENT_VERSION = 1;

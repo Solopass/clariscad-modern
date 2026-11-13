@@ -224,6 +224,12 @@ See `ARCHITECTURE.md` §5.
 
 ## Known gaps / notes
 
-- Tangent snap works on circles/arcs only (not ellipses or splines).
-- Intersections that touch tangentially between two curves (double roots) may be missed by the Newton path.
-- Walls are capped bands until the wall solver lands (M3).
+Checked against Claris CAD 2.0v3 (release notes and the running program). Still open:
+
+- An object's ruler is the layer's scale, not a scale stored on the object. Claris magnified each object by the ruler it was drawn with; TemariCAD keeps one model space so snaps and intersections work across layers, and the scale sizes the page and the annotations.
+- Three or more walls meeting at one point are not mitred. Two-wall L, T and X joints clean themselves up, which is ahead of Claris's manual Clean Up command. The release notes' Open-T / overlapping-intersection clean-up (Command-click) is not a separate command.
+- Splines still can't be trimmed, split or offset. Ellipse offset is unsupported. A fillet between two arcs is the minor arc.
+- Tangent snap is circles and arcs only, not ellipses or splines.
+- A tangential touch between two curves (a double root) can be missed by the Newton intersection path.
+- No per-object lock, selection filter, line arrowheads, or in-place editing of a symbol. Groups are one level (grouping a group merges it).
+- Hatch lines are not written to DXF. The native menu bar is the in-window one, on purpose.

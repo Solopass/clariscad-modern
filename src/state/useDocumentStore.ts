@@ -2,7 +2,8 @@
 // mutable object kept outside reactive state; `version` bumps on every
 // change so views know to redraw.
 import { create } from "zustand";
-import { DOCUMENT_VERSION, type CadDocument, type DraftingStandard, type Id, type Layer, type UnitSystem } from "../kernel/types";
+import { DEFAULT_SHEET, DOCUMENT_VERSION, type CadDocument, type DraftingStandard, type Id, type Layer, type UnitSystem } from "../kernel/types";
+import { normalizeSheet } from "./sheetModel";
 import { EntityIndex } from "../kernel/spatialIndex";
 import { type Patch, applyOps, invert, syncContext } from "./ops";
 import { withDependents } from "./dependents";
@@ -17,6 +18,7 @@ export function newDocument(): CadDocument {
     activeLayerId: layer.id,
     entities: [],
     symbols: [],
+    sheet: DEFAULT_SHEET,
   };
 }
 
@@ -118,9 +120,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     },
 
     load(doc, file = {}) {
+      const next = { ...doc, sheet: normalizeSheet(doc.sheet) };
       set({
-        doc,
-        index: buildIndex(doc),
+        doc: next,
+        index: buildIndex(next),
         version: get().version + 1,
         undoStack: [],
         redoStack: [],
@@ -129,6 +132,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
         filePath: file.path ?? null,
         savedTop: file.dirty ? NEVER_SAVED : null,
       });
+      try {
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") window.dispatchEvent(new Event("temaricad:fit"));
+      } catch {
+        /* no window in tests */
+      }
     },
 
     setSelection(ids) {

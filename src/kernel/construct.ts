@@ -1,6 +1,6 @@
 // Construction math behind the drawing Methods (pure functions, no state).
 import type { Prim } from "./prims";
-import { closestOnPrim } from "./prims";
+import { closestOnPrim, primDeriv } from "./prims";
 import { intersectPrims } from "./intersections";
 import { type Vec2, TAU, add, angleOf, cross, dist, fromAngle, mid, normalize, normAngle, perp, rotate, scale, sub } from "./vec";
 
@@ -45,6 +45,42 @@ export function arc3P(start: Vec2, through: Vec2, end: Vec2): ArcDef | null {
   return ccw
     ? { center: c.center, r: c.r, start: normAngle(a0), end: normAngle(a1) }
     : { center: c.center, r: c.r, start: normAngle(a1), end: normAngle(a0) };
+}
+
+/**
+ * Arc that leaves `origin` traveling along `tangent` and ends at `end`.
+ * The stored arc is CCW; when the tangent walk is clockwise the same curve
+ * is stored from `end` back to `origin`. Null when the end lies on the tangent line.
+ */
+export function arcFromTangent(origin: Vec2, tangent: Vec2, end: Vec2): ArcDef | null {
+  const lenT = Math.hypot(tangent.x, tangent.y);
+  if (lenT < 1e-12) return null;
+  let T = { x: tangent.x / lenT, y: tangent.y / lenT };
+  const D = sub(end, origin);
+  const len2 = D.x * D.x + D.y * D.y;
+  if (len2 < 1e-18) return null;
+  // Leave toward the end, not away from it.
+  if (D.x * T.x + D.y * T.y < 0) T = { x: -T.x, y: -T.y };
+  const N = perp(T);
+  const dn = D.x * N.x + D.y * N.y;
+  if (Math.abs(dn) < 1e-9 * Math.sqrt(len2)) return null;
+  const rSigned = len2 / (2 * dn);
+  const center = add(origin, scale(N, rSigned));
+  const r = Math.abs(rSigned);
+  if (!(r > 1e-9)) return null;
+  const startAng = normAngle(angleOf(sub(origin, center)));
+  const endAng = normAngle(angleOf(sub(end, center)));
+  if (rSigned >= 0) return startAng === endAng ? null : { center, r, start: startAng, end: endAng };
+  return startAng === endAng ? null : { center, r, start: endAng, end: startAng };
+}
+
+/** Unit tangent of a primitive at the point on it nearest `p`. */
+export function tangentAt(prim: Prim, p: Vec2): { point: Vec2; dir: Vec2 } | null {
+  const h = closestOnPrim(prim, p);
+  const d = primDeriv(prim, h.u);
+  const len = Math.hypot(d.x, d.y);
+  if (!(len > 1e-12)) return null;
+  return { point: h.point, dir: { x: d.x / len, y: d.y / len } };
 }
 
 /**

@@ -6,10 +6,15 @@ import { useToolStore } from "../state/useToolStore";
 import { viewportRef } from "../canvas/controller";
 import { Dialog, type DialogField } from "./Dialog";
 import { PlotDialog } from "./PlotDialog";
-import { exportDxfFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
+import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
 import type { PaletteId, PaletteState } from "../App";
 import type { DraftingStandard } from "../kernel/types";
 import { explodeSelection, makeSymbol } from "../state/symbols";
+import { alignSelection, duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
+import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
+import { groupSelection, ungroupSelection } from "../state/groups";
+import { describeSelection } from "../state/inspect";
+import { SheetDialog } from "./SheetDialog";
 
 const STANDARD_LABELS: [DraftingStandard, string][] = [
   ["ANSI", "ANSI Y14.5"],
@@ -18,9 +23,8 @@ const STANDARD_LABELS: [DraftingStandard, string][] = [
   ["JIS", "JIS"],
   ["BS308", "BS 308"],
 ];
-import { duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
 
-type DialogSpec = { title: string; fields: DialogField[]; okLabel?: string; run(v: Record<string, number>): void };
+type DialogSpec = { title: string; fields: DialogField[]; note?: string; okLabel?: string; run(v: Record<string, number>): void };
 
 interface Item {
   label: string;
@@ -45,10 +49,19 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
   const [open, setOpen] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [plotOpen, setPlotOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   useEffect(() => {
     const open = () => setPlotOpen(true);
     window.addEventListener("temaricad:plot", open);
-    return () => window.removeEventListener("temaricad:plot", open);
+    const info = () => {
+      const spec = describeSelection();
+      if (spec) setDialog({ title: spec.title, fields: spec.fields, note: spec.note, okLabel: "Apply", run: spec.apply });
+    };
+    window.addEventListener("temaricad:info", info);
+    return () => {
+      window.removeEventListener("temaricad:plot", open);
+      window.removeEventListener("temaricad:info", info);
+    };
   }, []);
   const ds = useDocumentStore();
   const settings = useToolStore((s) => s.settings);
@@ -68,6 +81,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
         { label: "Save As…", shortcut: `${mod}⇧S`, run: () => void saveDrawingAs() },
         "-",
         { label: "Export DXF…", run: () => void exportDxfFile() },
+        { label: "Export PNG…", run: () => void exportPngFile() },
         { label: "Plot (PDF / SVG)…", shortcut: `${mod}P`, run: () => setPlotOpen(true) },
       ],
     },
@@ -77,6 +91,9 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
         { label: lastUndo ? `Undo ${lastUndo.label}` : "Can't Undo", shortcut: `${mod}Z`, disabled: !lastUndo, run: ds.undo },
         { label: lastRedo ? `Redo ${lastRedo.label}` : "Can't Redo", shortcut: `${mod}Y`, disabled: !lastRedo, run: ds.redo },
         "-",
+        { label: "Cut", shortcut: `${mod}X`, disabled: !ds.selection.size, run: cutSelection },
+        { label: "Copy", shortcut: `${mod}C`, disabled: !ds.selection.size, run: copySelection },
+        { label: "Paste", shortcut: `${mod}V`, run: pasteSelection },
         {
           label: "Clear",
           shortcut: "Del",
@@ -91,6 +108,12 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
             ds.setSelection(ds.doc.entities.map((e) => e.id));
           },
         },
+        {
+          label: "Get Info…",
+          shortcut: `${mod}I`,
+          disabled: !ds.selection.size,
+          run: () => window.dispatchEvent(new Event("temaricad:info")),
+        },
       ],
     },
     {
@@ -99,6 +122,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
         { label: "Zoom In", shortcut: `${mod}+`, run: () => viewportRef.current?.zoomBy(1.5) },
         { label: "Zoom Out", shortcut: `${mod}-`, run: () => viewportRef.current?.zoomBy(1 / 1.5) },
         { label: "Fit to Drawing", shortcut: "F", run: () => viewportRef.current?.zoomFit() },
+        { label: "Fit Page", shortcut: "Shift+F", run: () => viewportRef.current?.fitSheet() },
         "-",
         { label: "Show Grid", checked: settings.gridVisible, run: () => setSetting("gridVisible", !settings.gridVisible) },
         { label: "Show Line Weights", checked: settings.showWeights, run: () => setSetting("showWeights", !settings.showWeights) },
@@ -108,9 +132,14 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
       title: "Arrange",
       items: (() => {
         const none = !ds.selection.size;
+        const one = ds.selection.size < 2;
+        const grouped = ds.doc.entities.some((e) => ds.selection.has(e.id) && e.groupId);
         const g = settings.gridSpacing;
         const center = () => selectionCenter() ?? { x: 0, y: 0 };
         return [
+          { label: "Group", shortcut: `${mod}G`, disabled: one, run: groupSelection },
+          { label: "Ungroup", shortcut: `${mod}⇧G`, disabled: !grouped, run: ungroupSelection },
+          "-",
           { label: "Duplicate", shortcut: `${mod}D`, disabled: none, run: () => duplicate({ x: g, y: -g }) },
           {
             label: "Step and Repeat…",
@@ -169,6 +198,13 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
           { label: "Flip Horizontal", disabled: none, run: () => flipSelection("horizontal", center()) },
           { label: "Flip Vertical", disabled: none, run: () => flipSelection("vertical", center()) },
           "-",
+          { label: "Align Left", disabled: one, run: () => alignSelection("left") },
+          { label: "Align Right", disabled: one, run: () => alignSelection("right") },
+          { label: "Align Top", disabled: one, run: () => alignSelection("top") },
+          { label: "Align Bottom", disabled: one, run: () => alignSelection("bottom") },
+          { label: "Align Horizontal Centers", disabled: one, run: () => alignSelection("hcenter") },
+          { label: "Align Vertical Centers", disabled: one, run: () => alignSelection("vcenter") },
+          "-",
           { label: "Bring to Front", disabled: none, run: () => reorder("front") },
           { label: "Send to Back", disabled: none, run: () => reorder("back") },
           "-",
@@ -187,6 +223,8 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
     {
       title: "Layout",
       items: [
+        { label: "Rulers & Drawing Size…", run: () => setSheetOpen(true) },
+        "-",
         ...UNITS.map(([u, label]) => ({ label, checked: ds.doc.units === u, run: () => ds.setUnits(u) })),
         "-",
         ...STANDARD_LABELS.map(([s, label]) => ({ label: `Standard: ${label}`, checked: ds.doc.standard === s, run: () => ds.setStandard(s) })),
@@ -217,10 +255,12 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
   return (
     <>
     {plotOpen && <PlotDialog onClose={() => setPlotOpen(false)} />}
+    {sheetOpen && <SheetDialog onClose={() => setSheetOpen(false)} />}
     {dialog && (
       <Dialog
         title={dialog.title}
         fields={dialog.fields}
+        note={dialog.note}
         okLabel={dialog.okLabel}
         onCancel={() => setDialog(null)}
         onOk={(v) => {
@@ -242,7 +282,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
             {m.title}
           </button>
           {open === m.title && (
-            <div className="mac-frame absolute top-[19px] left-0 min-w-[220px] py-[2px]">
+            <div className="mac-frame absolute top-[19px] left-0 max-h-[70vh] min-w-[240px] overflow-y-auto py-[2px]">
               {m.items.map((it, i) =>
                 it === "-" ? (
                   <div key={i} className="my-[3px] border-t border-dotted border-black" />
