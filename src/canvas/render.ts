@@ -111,6 +111,11 @@ export function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, theme: Them
   ctx.fillStyle = pages?.length ? theme.pasteboard : theme.paper;
   ctx.fillRect(0, 0, cam.width, cam.height);
   if (pages?.length) {
+    ctx.fillStyle = "#8c8c8c";
+    for (const p of pages) {
+      const r = pageScreenRect(cam, p);
+      ctx.fillRect(r.x + 4, r.y + 4, r.w, r.h);
+    }
     ctx.fillStyle = theme.paper;
     for (const p of pages) {
       const r = pageScreenRect(cam, p);

@@ -326,6 +326,17 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
         ).map(([id, label, sid]) => ({ label, shortcut: sc(sid), checked: palettes[id], run: () => setPalette(id, !palettes[id]) })),
         "-",
         { label: "Shortcuts", shortcut: sc("window.shortcuts"), checked: Boolean(keysOpen), run: () => window.dispatchEvent(new CustomEvent("temaricad:command", { detail: "window.shortcuts" })) },
+        {
+          label: "Reset Palettes",
+          run: () => {
+            try {
+              for (const k of ["tools", "modifiers", "layers", "attributes", "symbols"]) localStorage.removeItem(`temaricad.palette.${k}`);
+            } catch {
+              /* ignore */
+            }
+            window.dispatchEvent(new CustomEvent("temaricad:reset-palettes"));
+          },
+        },
       ],
     },
     {

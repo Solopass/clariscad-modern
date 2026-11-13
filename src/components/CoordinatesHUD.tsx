@@ -114,8 +114,20 @@ export function CoordinatesHUD({ keysOpen, onToggleKeys }: { keysOpen?: boolean;
         </label>
       ))}
       <span className="w-[38px] shrink-0 font-mono text-[10px] font-bold text-[#d6001c]">{snapLabel}</span>
-      <span className="shrink-0 font-mono text-[11px]" title="Zoom. 100% is paper size: one inch on the page is one inch on the screen.">
-        {Number.isFinite(zoomPct) ? `${zoomPct}%` : ""}
+      <span className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[11px]">
+        <button className="mac-btn px-1 py-0 text-[10px] leading-[15px]" title="Zoom Out (Ctrl+-)" onClick={() => viewportRef.current?.zoomBy(1 / 1.25)}>
+          −
+        </button>
+        <button
+          className="px-1 font-mono text-[11px] hover:underline"
+          title="Fit Page (Shift+F). 100% is true paper size."
+          onClick={() => viewportRef.current?.fitSheet()}
+        >
+          {Number.isFinite(zoomPct) ? `${zoomPct}%` : ""}
+        </button>
+        <button className="mac-btn px-1 py-0 text-[10px] leading-[15px]" title="Zoom In (Ctrl++)" onClick={() => viewportRef.current?.zoomBy(1.25)}>
+          +
+        </button>
       </span>
       <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: error ? "#d6001c" : "#333" }} title={error || prompt}>
         {error || (editing ? "Editing symbol — changes update every copy. Alt+Shift+E finishes." : prompt)}

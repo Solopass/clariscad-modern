@@ -27,7 +27,7 @@ body,
 .mac-frame {
   background: var(--chrome);
   border: 1px solid var(--ink);
-  box-shadow: 1px 1px 0 var(--ink);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
 }
 
 .mac-title {
@@ -57,6 +57,9 @@ body,
   background: var(--paper);
   padding: 0;
 }
+.mac-close:hover {
+  background: #ddd;
+}
 
 .mac-btn {
   border: 1px solid var(--ink);
@@ -64,8 +67,16 @@ body,
   background: var(--paper);
   padding: 1px 10px;
   font: inherit;
+  cursor: pointer;
 }
-.mac-btn:active,
+.mac-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+.mac-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mac-btn:active:not(:disabled),
 .mac-btn[aria-pressed="true"] {
   background: var(--hilite);
   color: var(--hilite-ink);
