@@ -16,6 +16,7 @@ import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from
 import { describeSelection } from "../state/inspect";
 import { SheetDialog } from "./SheetDialog";
 import { shortcutText } from "../input/keymap";
+import { runCommand } from "../input/runCommand";
 
 const STANDARD_LABELS: [DraftingStandard, string][] = [
   ["ANSI", "ANSI Y14.5"],
@@ -148,10 +149,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
         {
           label: "Select All",
           shortcut: sc("edit.selectAll"),
-          run: () => {
-            useToolStore.getState().setTool("select");
-            ds.setSelection(ds.doc.entities.map((e) => e.id));
-          },
+          run: () => runCommand("edit.selectAll", { zoomBy() {}, zoomFit() {}, fitSheet() {}, cancelTool() {} }),
         },
         {
           label: "Get Info…",

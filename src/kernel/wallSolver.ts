@@ -55,6 +55,11 @@ function endCondition(w: W, atB: boolean, all: W[]): End {
   const uEnd = atB ? w.len : 0;
   const plain: End = { cap: true, u: [uEnd, uEnd], reach: uEnd };
 
+  // A T into a wall this end lands on wins over an L with another wall that
+  // ends at the same point. Otherwise two stems ending on a bar mitre through it.
+  const tee = tJoin(w, atB, all, P, uEnd);
+  if (tee) return tee;
+
   // L corner: exactly one other wall ends here.
   const sharers = all.filter((v) => v !== w && (dist(v.a, P) < EPS || dist(v.b, P) < EPS));
   if (sharers.length === 1) {
@@ -85,24 +90,26 @@ function endCondition(w: W, atB: boolean, all: W[]): End {
   // (a Y junction). A grazing neighbour is left square so the mitre cannot run away.
   if (sharers.length > 1) return multiMitre(w, atB, sharers, P, uEnd);
 
-  // T join: P inside another wall's band (not at its ends).
+  return plain;
+}
+
+/** End sits in another wall's band, not at that wall's own ends. */
+function tJoin(w: W, atB: boolean, all: W[], P: Vec2, uEnd: number): End | null {
   for (const v of all) {
     if (v === w) continue;
     const { u: uv, o: ov } = local(v, P);
     const [lo, hi] = v.off;
     if (uv <= EPS || uv >= v.len - EPS || ov < lo - EPS || ov > hi + EPS) continue;
     if (Math.abs(cross(w.d, v.d)) < 1e-9) continue;
-    // The near face is the one on the side where the rest of W lies.
     const far = atB ? w.a : w.b;
     const of = local(v, far).o;
     const near = of >= (lo + hi) / 2 ? hi : lo;
     const u: [number, number] = [uEnd, uEnd];
     for (let k = 0; k < 2; k++) u[k] = faceMeet(w, w.off[k], facePoint(v, near, 0), v.d) ?? uEnd;
-    // For cutting V's near face, W's band reaches V's middle line.
     const reach = faceMeet(w, (w.off[0] + w.off[1]) / 2, facePoint(v, (lo + hi) / 2, 0), v.d) ?? uEnd;
     return { cap: false, u, reach };
   }
-  return plain;
+  return null;
 }
 
 /** Interval of u on W's face line (offset o) strictly inside V's band [ua, ub] × [lo, hi]. */

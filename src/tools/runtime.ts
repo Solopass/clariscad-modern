@@ -11,6 +11,7 @@ import { handlesOf, moveHandle } from "../kernel/handles";
 import { simplifyPolyline } from "../kernel/simplify";
 import { type Vec2, dist, sub } from "../kernel/vec";
 import { expandSelection } from "../state/groups";
+import { canSelect } from "../state/selection";
 import { type Patch, addPatch, removePatch, replacePatch } from "../state/ops";
 import type { ToolSettings } from "../state/useToolStore";
 import type { BuildCtx, MethodDef, Shape } from "./defs";
@@ -94,12 +95,7 @@ function newStyle(s: ToolSettings, kind: string): Entity["style"] {
 const empty = (): Overlay => ({ shapes: [], highlight: [], points: [] });
 
 function layerOk(doc: CadDocument, allowLocked = false) {
-  const layers = new Map(doc.layers.map((l) => [l.id, l]));
-  return (e: Entity) => {
-    if (e.locked && !allowLocked) return false;
-    const l = layers.get(e.layerId);
-    return !l || (l.visible && !l.locked);
-  };
+  return (e: Entity) => canSelect(doc, e, { allowLocked });
 }
 
 // ---------------------------------------------------------------- drawing & editing tools
@@ -420,9 +416,17 @@ export class SelectTool implements Tool {
   private note = "";
 
   private ok(alt = false) {
-    const allow = layerOk(this.ctx.doc(), alt);
     const filter = this.ctx.settings().selectFilter;
-    return (e: Entity) => allow(e) && (!filter || filter === "all" || e.kind === filter);
+    return (e: Entity) => canSelect(this.ctx.doc(), e, { allowLocked: alt, filter });
+  }
+
+  /** Drop members the current filter or lock state will not take. */
+  private keep(ids: Id[], alt = false): Id[] {
+    const ok = this.ok(alt);
+    return ids.filter((id) => {
+      const ent = this.ctx.doc().entities.find((x) => x.id === id);
+      return !!ent && ok(ent);
+    });
   }
 
   private hit(p: Vec2, alt = false): Id | null {
@@ -470,7 +474,7 @@ export class SelectTool implements Tool {
     }
     this.note = "";
     const id = this.hit(e.raw, e.alt);
-    const members = id ? expandSelection(this.ctx.doc(), [id], "click") : [];
+    const members = id ? this.keep(expandSelection(this.ctx.doc(), [id], "click"), e.alt) : [];
     // A group is one object: reshape it after Ungroup.
     const grouped = members.length > 1;
     const grip = e.shift || grouped ? null : this.handleHit(e.raw);
@@ -550,7 +554,7 @@ export class SelectTool implements Tool {
       const rawIds = crossing
         ? index.spatial.search(box).filter((id) => usable(id) && entityTouchesBox(index.get(id)!, box, index))
         : index.spatial.searchInside(box).filter(usable);
-      const ids = expandSelection(this.ctx.doc(), rawIds, crossing ? "crossing" : "inside");
+      const ids = this.keep(expandSelection(this.ctx.doc(), rawIds, crossing ? "crossing" : "inside"));
       const sel = new Set(this.additive ? this.ctx.selection() : []);
       for (const id of ids) sel.add(id);
       this.ctx.setSelection(sel);
@@ -559,7 +563,7 @@ export class SelectTool implements Tool {
   }
 
   private finishArea() {
-    const ids = expandSelection(this.ctx.doc(), entitiesInPolygon(this.path, this.ctx.index(), this.ok()), "inside");
+    const ids = this.keep(expandSelection(this.ctx.doc(), entitiesInPolygon(this.path, this.ctx.index(), this.ok()), "inside"));
     const sel = new Set(this.additive ? this.ctx.selection() : []);
     for (const id of ids) sel.add(id);
     this.ctx.setSelection(sel);

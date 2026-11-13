@@ -7,6 +7,7 @@ import type { Entity } from "../src/kernel/types";
 import { parseDocument, serializeDocument } from "../src/io/nativeJson";
 import { copyEntities, alignSelection } from "../src/state/arrange";
 import { expandSelection, groupSelection, lockSelection, ungroupSelection } from "../src/state/groups";
+import { selectableIds } from "../src/state/selection";
 import { copySelection, pasteSelection } from "../src/state/clipboard";
 import { applyOps } from "../src/state/ops";
 import { newDocument, useDocumentStore } from "../src/state/useDocumentStore";
@@ -240,6 +241,35 @@ describe("curves, walls, arrows, snaps, keys", () => {
     const shape = endingOutline(ends[1].tip, ends[1].dir, "arrow", 3);
     expect(shape.fill).toBe(true);
     expect(shape.pts[0]).toEqual({ x: 10, y: 0 });
+  });
+
+  test("two stems ending on a bar stop at the bar instead of mitring through it", () => {
+    const bar = wall("bar", 0, 0, 20, 0, 2);
+    const up = wall("up", 10, 0, 10, 12, 2);
+    const diag = wall("diag", 10, 0, 4, 12, 2);
+    const out = solveWalls([bar, up, diag]);
+    for (const id of ["up", "diag"]) {
+      for (const p of out.get(id)!.prims) {
+        if (p.t !== "seg") continue;
+        // The bar is centered on y = 0 with thickness 2, so a proper T stops at y = 1.
+        expect(p.a.y).toBeGreaterThan(0.9);
+        expect(p.b.y).toBeGreaterThan(0.9);
+      }
+    }
+  });
+
+  test("select all skips locked objects and can be limited to one kind", () => {
+    const doc = {
+      ...newDocument(),
+      entities: [
+        line("a", 0, 0, 1, 0),
+        { ...line("b", 0, 1, 1, 1), locked: true },
+        { id: "c", layerId: "layer-1", kind: "circle" as const, center: { x: 0, y: 0 }, r: 2 },
+      ],
+    };
+    expect(selectableIds(doc).sort()).toEqual(["a", "c"]);
+    expect(selectableIds(doc, { filter: "line" })).toEqual(["a"]);
+    expect(selectableIds(doc, { allowLocked: true, filter: "line" }).sort()).toEqual(["a", "b"]);
   });
 
   test("the shortcut list matches what the key handler looks up", () => {

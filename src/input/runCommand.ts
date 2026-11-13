@@ -5,6 +5,7 @@ import { copySelection, cutSelection, pasteSelection } from "../state/clipboard"
 import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
 import { explodeSelection, makeSymbol } from "../state/symbols";
+import { selectableIds } from "../state/selection";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
 import { TOOLS } from "../tools/defs";
@@ -91,8 +92,7 @@ export function runCommand(id: string, host: CommandHost): boolean {
     }
     case "edit.selectAll": {
       useToolStore.getState().setTool("select");
-      const layers = new Map(doc.doc.layers.map((l) => [l.id, l]));
-      doc.setSelection(doc.doc.entities.filter((e) => !e.locked && layers.get(e.layerId)?.visible !== false && !layers.get(e.layerId)?.locked).map((e) => e.id));
+      doc.setSelection(selectableIds(doc.doc, { filter: useToolStore.getState().settings.selectFilter }));
       return true;
     }
     case "view.zoomIn":
