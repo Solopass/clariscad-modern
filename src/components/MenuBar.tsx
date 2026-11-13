@@ -51,7 +51,7 @@ const UNITS: [UnitSystem, string][] = [
   ["m", "Meters"],
 ];
 
-export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setPalette(id: PaletteId, v: boolean): void }) {
+export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteState; setPalette(id: PaletteId, v: boolean): void; keysOpen?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [plotOpen, setPlotOpen] = useState(false);
@@ -304,7 +304,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
           ] as [PaletteId, string, string][]
         ).map(([id, label, sid]) => ({ label, shortcut: sc(sid), checked: palettes[id], run: () => setPalette(id, !palettes[id]) })),
         "-",
-        { label: "Shortcuts", shortcut: sc("window.shortcuts"), checked: false, run: () => window.dispatchEvent(new CustomEvent("temaricad:command", { detail: "window.shortcuts" })) },
+        { label: "Shortcuts", shortcut: sc("window.shortcuts"), checked: Boolean(keysOpen), run: () => window.dispatchEvent(new CustomEvent("temaricad:command", { detail: "window.shortcuts" })) },
       ],
     },
   ];
@@ -349,7 +349,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
             {m.title}
           </button>
           {open === m.title && (
-            <div className="mac-frame absolute top-[19px] left-0 max-h-[70vh] min-w-[240px] overflow-y-auto py-[2px]">
+            <div className="mac-frame absolute top-[19px] left-0 max-h-[70vh] min-w-[260px] overflow-y-auto py-[2px]">
               {m.items.map((it, i) =>
                 it === "-" ? (
                   <div key={i} className="my-[3px] border-t border-dotted border-black" />
@@ -357,7 +357,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
                   <div
                     key={i}
                     aria-disabled={it.disabled}
-                    className="mac-menu-item flex cursor-default justify-between gap-6 py-[1px] pr-3 pl-1"
+                    className="mac-menu-item flex cursor-default justify-between gap-6 whitespace-nowrap py-[1px] pr-3 pl-1"
                     style={{ color: it.disabled ? "#999" : undefined }}
                     onPointerUp={() => {
                       if (it.disabled) return;

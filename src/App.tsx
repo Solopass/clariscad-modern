@@ -27,10 +27,9 @@ function loadOpen(): PaletteState {
 
 function loadKeys(): boolean {
   try {
-    const v = localStorage.getItem(KEYS_OPEN);
-    return v === null ? true : v === "1";
+    return localStorage.getItem(KEYS_OPEN) === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -74,7 +73,7 @@ export default function App() {
     });
   return (
     <div className="flex h-full flex-col">
-      <MenuBar palettes={open} setPalette={setOpen} />
+      <MenuBar palettes={open} setPalette={setOpen} keysOpen={keysOpen} />
       <MethodsBar />
       <div className="relative min-h-0 flex-1">
         <Viewport />
@@ -85,7 +84,7 @@ export default function App() {
         {open.symbols && <SymbolsPalette onClose={() => setOpen("symbols", false)} />}
       </div>
       {keysOpen && <ShortcutBar onClose={() => setKeys(false)} />}
-      <CoordinatesHUD />
+      <CoordinatesHUD keysOpen={keysOpen} onToggleKeys={() => setKeys(!keysOpen)} />
     </div>
   );
 }

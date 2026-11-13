@@ -19,7 +19,7 @@ export function LayersPalette({ onClose }: { onClose(): void }) {
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
-    <Palette id="layers" title="Layers" initial={{ x: window.innerWidth - 470, y: 64 }} onClose={onClose}>
+    <Palette id="layers" title="Layers" initial={{ x: Math.max(96, window.innerWidth - 472), y: 24 }} onClose={onClose}>
       <div className="w-[270px]">
         <div className="grid grid-cols-[18px_18px_18px_1fr_88px] items-center gap-x-1 border-b border-black px-1 py-[1px] text-[10px] font-bold">
           <span title="Visible">👁</span>

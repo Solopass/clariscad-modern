@@ -21,7 +21,7 @@ export function ToolsPalette() {
 
   return (
     <>
-      <Palette id="tools" title="Tools" initial={{ x: 8, y: 64 }}>
+      <Palette id="tools" title="Tools" initial={{ x: 26, y: 24 }}>
         <div className="grid grid-cols-2">
           {TOOLS.map((t) => {
             const active = tool === t.id;

@@ -27,16 +27,28 @@ export function Palette({ id, title, initial, onClose, children }: Props) {
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const el = useRef<HTMLDivElement>(null);
 
-  // Keep the palette on screen after window resizes.
+  // Keep the palette inside its viewport container after window/panel resizes.
   useEffect(() => {
-    const clamp = () =>
-      setPos((p) => {
-        const w = el.current?.offsetWidth ?? 100;
-        return { x: Math.min(Math.max(0, p.x), window.innerWidth - w), y: Math.min(Math.max(20, p.y), window.innerHeight - 30) };
-      });
+    const clamp = () => {
+      const node = el.current;
+      const parent = node?.parentElement;
+      const pw = parent?.clientWidth ?? window.innerWidth;
+      const ph = parent?.clientHeight ?? window.innerHeight;
+      const w = node?.offsetWidth ?? 100;
+      const h = node?.offsetHeight ?? 40;
+      setPos((p) => ({
+        x: Math.min(Math.max(0, p.x), Math.max(0, pw - w)),
+        y: Math.min(Math.max(20, p.y), Math.max(20, ph - h)),
+      }));
+    };
     clamp();
+    const ro = el.current?.parentElement ? new ResizeObserver(clamp) : null;
+    if (el.current?.parentElement) ro?.observe(el.current.parentElement);
     window.addEventListener("resize", clamp);
-    return () => window.removeEventListener("resize", clamp);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", clamp);
+    };
   }, []);
 
   const onDown = (e: React.PointerEvent) => {

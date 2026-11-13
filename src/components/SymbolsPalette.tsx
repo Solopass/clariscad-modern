@@ -97,7 +97,7 @@ export function SymbolsPalette({ onClose }: { onClose(): void }) {
   );
 
   return (
-    <Palette id="symbols" title="Symbols" initial={{ x: 60, y: 420 }} onClose={onClose}>
+    <Palette id="symbols" title="Symbols" initial={{ x: 26, y: 404 }} onClose={onClose}>
       <div className="w-[220px]">
         <div className="max-h-[260px] overflow-y-auto">
           {own.map((d) => row(d, false))}

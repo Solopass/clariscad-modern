@@ -19,7 +19,7 @@ const FIELDS: { id: Field; label: string; angle?: boolean }[] = [
   { id: "ang", label: "Angle", angle: true },
 ];
 
-export function CoordinatesHUD() {
+export function CoordinatesHUD({ keysOpen, onToggleKeys }: { keysOpen?: boolean; onToggleKeys?(): void }) {
   const point = useCursorStore((s) => s.point);
   const from = useCursorStore((s) => s.from);
   const snapLabel = useCursorStore((s) => s.snapLabel);
@@ -88,7 +88,7 @@ export function CoordinatesHUD() {
   };
 
   return (
-    <div className="flex h-[26px] items-center gap-3 border-t border-black bg-white px-2">
+    <div className="flex h-[26px] items-center gap-2 border-t border-black bg-white px-2">
       {FIELDS.map((f) => (
         <label key={f.id} className="inline-flex items-center gap-1">
           <span className="text-[11px]">{f.label}</span>
@@ -98,7 +98,7 @@ export function CoordinatesHUD() {
             }}
             aria-label={f.label}
             className={`mac-field font-mono text-[11px] ${edits[f.id] !== undefined ? "locked" : ""}`}
-            style={{ width: f.angle ? 64 : 92 }}
+            style={{ width: f.angle ? 54 : 76 }}
             value={edits[f.id] ?? live[f.id]}
             onFocus={(e) => e.target.select()}
             onChange={(e) => setEdits({ ...edits, [f.id]: e.target.value })}
@@ -113,13 +113,23 @@ export function CoordinatesHUD() {
           />
         </label>
       ))}
-      <span className="w-[44px] font-mono text-[10px] font-bold text-[#d6001c]">{snapLabel}</span>
-      <span className="font-mono text-[11px]" title="Zoom. 100% is paper size: one inch on the page is one inch on the screen.">
+      <span className="w-[38px] shrink-0 font-mono text-[10px] font-bold text-[#d6001c]">{snapLabel}</span>
+      <span className="shrink-0 font-mono text-[11px]" title="Zoom. 100% is paper size: one inch on the page is one inch on the screen.">
         {Number.isFinite(zoomPct) ? `${zoomPct}%` : ""}
       </span>
-      <span className="truncate text-[11px]" style={{ color: error ? "#d6001c" : "#333" }}>
+      <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: error ? "#d6001c" : "#333" }} title={error || prompt}>
         {error || (editing ? "Editing symbol — changes update every copy. Alt+Shift+E finishes." : prompt)}
       </span>
+      {onToggleKeys && (
+        <button
+          className="mac-btn shrink-0 px-1.5 py-0 text-[10px] leading-[16px]"
+          style={keysOpen ? { background: "#000", color: "#fff" } : undefined}
+          onClick={onToggleKeys}
+          title="Toggle keyboard shortcuts (Ctrl+/)"
+        >
+          Keys
+        </button>
+      )}
     </div>
   );
 }

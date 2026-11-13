@@ -38,7 +38,7 @@ export function AttributesPalette({ onClose }: { onClose(): void }) {
   };
 
   return (
-    <Palette id="attributes" title="Attributes" initial={{ x: window.innerWidth - 190, y: 400 }} onClose={onClose}>
+    <Palette id="attributes" title="Attributes" initial={{ x: Math.max(200, window.innerWidth - 196), y: 396 }} onClose={onClose}>
       <div className="flex w-[176px] flex-col gap-1 p-2">
         {sel && <p className="text-[10px] text-[#666]">Editing the selection</p>}
         <label className="flex items-center justify-between">

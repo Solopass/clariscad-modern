@@ -26,7 +26,7 @@ export function ModifiersPalette({ onClose }: { onClose(): void }) {
   const set = useToolStore((s) => s.setSetting);
 
   return (
-    <Palette id="modifiers" title="Modifiers" initial={{ x: window.innerWidth - 190, y: 64 }} onClose={onClose}>
+    <Palette id="modifiers" title="Modifiers" initial={{ x: Math.max(200, window.innerWidth - 196), y: 24 }} onClose={onClose}>
       <div className="w-[176px] py-1">
         {ITEMS.map((it) => (
           <label key={it.key} className="mac-menu-item flex cursor-default items-center gap-2 px-2 py-[1px]">
