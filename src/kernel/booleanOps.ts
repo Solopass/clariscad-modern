@@ -2,7 +2,8 @@
 // EditResult describing what to replace, remove and add (or null when the
 // edit does not apply), and the tools turn that into one undoable patch.
 import type { ArcEntity, Entity, Id, LineEntity } from "./types";
-import { type ArcPrim, type Prim, type PrimContext, type SegPrim, primsOf } from "./prims";
+import { type ArcPrim, type Prim, type PrimContext, type SegPrim, primDeriv, primPoint, primsOf, splinePrim } from "./prims";
+import { simplifyPolyline } from "./simplify";
 import { intersectPrims, lineLine } from "./intersections";
 import { tangentTangentRadius } from "./construct";
 import {
@@ -20,6 +21,26 @@ import {
   toPath,
 } from "./path";
 import { type Vec2, TAU, add, angleInSweep, angleOf, cross, dist, dot, normAngle, normalize, perp, rotate, scale, sub } from "./vec";
+
+/** A spline edited as the polyline the rest of the kernel already flattens it to, then put back. */
+function splineStandIn(e: Extract<Entity, { kind: "spline" }>): Entity | null {
+  const prim = splinePrim(e);
+  if (!prim || prim.pts.length < 2) return null;
+  const span = Math.max(...prim.pts.map((p) => Math.hypot(p.x, p.y)), 1);
+  let pts = simplifyPolyline(prim.pts, Math.max(0.05, span * 1e-4));
+  if (e.closed && pts.length > 2 && dist(pts[0], pts[pts.length - 1]) < 1e-6) pts = pts.slice(0, -1);
+  if (pts.length < 2) return null;
+  return { id: e.id, layerId: e.layerId, ...(e.style ? { style: e.style } : {}), kind: "polyline", points: pts, closed: !!e.closed };
+}
+
+function backToSpline(e: Entity): Entity {
+  if (e.kind !== "polyline" || e.bulges?.some((b) => b !== 0)) return e;
+  return { id: e.id, layerId: e.layerId, ...(e.style ? { style: e.style } : {}), ...(e.groups ? { groups: e.groups } : {}), ...(e.locked ? { locked: true } : {}), kind: "spline", points: e.points, mode: "interpolated", closed: e.closed };
+}
+
+function mapSpline(r: EditResult): EditResult {
+  return { replace: r.replace.map(backToSpline), add: r.add.map(backToSpline), remove: r.remove };
+}
 
 export interface EditResult {
   /** New versions of existing entities (same ids). */
@@ -63,6 +84,12 @@ function pieces(path: Path, cuts: number[], pick: Vec2): { ranges: [number, numb
 
 /** Remove the piece of `target` under `pick`, bounded by its crossings with `cutters`. */
 export function trimAt(target: Entity, pick: Vec2, cutters: Entity[], newId: () => Id, ctx?: PrimContext): EditResult | null {
+  if (target.kind === "spline") {
+    const poly = splineStandIn(target);
+    if (!poly) return null;
+    const r = trimAt(poly, pick, cutters, newId, ctx);
+    return r ? mapSpline(r) : null;
+  }
   const path = toPath(target);
   if (!path) return null;
   const cuts = cutParams(
@@ -103,6 +130,10 @@ export function trimAt(target: Entity, pick: Vec2, cutters: Entity[], newId: () 
 
 /** The piece trimAt would remove (for highlighting under the cursor). */
 export function trimPiece(target: Entity, pick: Vec2, cutters: Entity[], ctx?: PrimContext): Entity | null {
+  if (target.kind === "spline") {
+    const poly = splineStandIn(target);
+    return poly ? trimPiece(poly, pick, cutters, ctx) : null;
+  }
   const path = toPath(target);
   if (!path) return null;
   const cuts = cutParams(
@@ -118,6 +149,12 @@ export function trimPiece(target: Entity, pick: Vec2, cutters: Entity[], ctx?: P
 
 /** Split `target` at the point nearest `at`. A closed shape opens there instead. */
 export function splitAt(target: Entity, at: Vec2, newId: () => Id): EditResult | null {
+  if (target.kind === "spline") {
+    const poly = splineStandIn(target);
+    if (!poly) return null;
+    const r = splitAt(poly, at, newId);
+    return r ? mapSpline(r) : null;
+  }
   const path = toPath(target);
   if (!path) return null;
   const n = path.segs.length;
@@ -242,6 +279,51 @@ export function offsetEntity(e: Entity, d: number, side: Vec2, newId: () => Id):
       const h = Math.abs(e.height) + 2 * d * k;
       if (w <= 0 || h <= 0) return null;
       return add1({ ...e, id, width: w, height: h, cornerRadius: e.cornerRadius > 0 ? Math.max(0, e.cornerRadius + d * k) : 0 });
+    }
+    case "ellipse": {
+      const full = e.start === undefined || e.end === undefined;
+      const start = full ? 0 : e.start!;
+      const sweep = full ? TAU : normAngle(e.end! - e.start!) || TAU;
+      const steps = Math.max(24, Math.round((sweep / TAU) * 72));
+      const local = rotate(sub(side, e.center), -e.rotation);
+      const inside = (local.x * local.x) / (e.rx * e.rx) + (local.y * local.y) / (e.ry * e.ry) < 1;
+      const sg = inside ? -1 : 1;
+      const pts: Vec2[] = [];
+      for (let i = 0; i <= steps; i++) {
+        const u = start + (sweep * i) / steps;
+        const prim = { t: "ell" as const, c: e.center, rx: e.rx, ry: e.ry, rot: e.rotation, start, sweep };
+        const p = primPoint(prim, u);
+        const tang = primDeriv(prim, u);
+        const outward = scale(perp(normalize(tang)), -1);
+        const q = add(p, scale(outward, d * sg));
+        if (!pts.length || dist(pts[pts.length - 1], q) > 1e-6) pts.push(q);
+      }
+      if (full && pts.length > 2) pts.pop();
+      if (pts.length < 2) return null;
+      return add1({ id, layerId: e.layerId, ...(e.style ? { style: e.style } : {}), kind: "spline", points: simplifyPolyline(pts, d * 0.05), mode: "interpolated", closed: full });
+    }
+    case "spline": {
+      const prim = splinePrim(e);
+      if (!prim) return null;
+      let best = { u: prim.u0, d: Infinity };
+      for (const u of prim.params) {
+        const dd = dist(prim.ev(u), side);
+        if (dd < best.d) best = { u, d: dd };
+      }
+      const at = prim.ev(best.u);
+      const tang = primDeriv(prim, best.u);
+      const sg = cross(tang, sub(side, at)) > 0 ? 1 : -1;
+      const pts: Vec2[] = [];
+      for (const u of prim.params) {
+        const p = prim.ev(u);
+        const t = primDeriv(prim, u);
+        const left = perp(normalize(t));
+        const q = add(p, scale(left, d * sg));
+        if (!pts.length || dist(pts[pts.length - 1], q) > 1e-6) pts.push(q);
+      }
+      const simple = simplifyPolyline(pts, Math.max(0.05, d * 0.05));
+      if (simple.length < 2) return null;
+      return add1({ id, layerId: e.layerId, ...(e.style ? { style: e.style } : {}), kind: "spline", points: simple, mode: "interpolated", closed: !!e.closed });
     }
     case "polyline":
     case "polygon": {

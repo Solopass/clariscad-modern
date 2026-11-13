@@ -193,7 +193,7 @@ export function describeSelection(): InfoSpec | null {
   const c = centerOf(ents);
   if (!c) return null;
   const kinds = new Set(ents.map((e) => e.kind));
-  const grouped = ents.some((e) => e.groupId);
+  const grouped = ents.some((e) => e.groups?.length);
   return {
     title: ents.length === 1 ? ents[0].kind : grouped ? "Group" : "Selection",
     note: `${ents.length} object${ents.length === 1 ? "" : "s"}${kinds.size === 1 ? "" : ` (${kinds.size} kinds)`}. Moving the center moves them together.`,

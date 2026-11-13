@@ -40,7 +40,24 @@ const DIM_TYPES = new Set(["horizontal", "vertical", "aligned", "angular", "radi
 function entityOk(e: Entity): boolean {
   if (!e || typeof e !== "object" || typeof e.id !== "string" || typeof e.layerId !== "string" || !KINDS.has(e.kind)) return false;
   const any = e as unknown as Record<string, unknown>;
-  if (e.groupId !== undefined && typeof e.groupId !== "string") delete any.groupId;
+  if (e.locked !== undefined && typeof e.locked !== "boolean") delete any.locked;
+  if (e.kind !== "dimension" && typeof any.groupId === "string") {
+    e.groups = [any.groupId as string, ...(e.groups ?? [])];
+    delete any.groupId;
+  }
+  if (e.groups !== undefined) {
+    const ids = e.groups.filter((id) => typeof id === "string");
+    if (ids.length) e.groups = ids;
+    else delete any.groups;
+  }
+  const ending = (k: "startEnding" | "endEnding") => {
+    const v = e.style?.[k];
+    if (v !== undefined && v !== "arrow" && v !== "open" && v !== "tick" && v !== "dot") delete (e.style as Record<string, unknown>)[k];
+  };
+  if (e.style) {
+    ending("startEnding");
+    ending("endEnding");
+  }
   const def = (k: string, v: unknown) => {
     if (any[k] === undefined) any[k] = v;
   };

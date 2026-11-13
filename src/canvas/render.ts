@@ -6,8 +6,9 @@ import { textWidth } from "../kernel/textMetrics";
 import { handlesOf } from "../kernel/handles";
 import { entityHatch, fillRings, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
-import { type Prim, type PrimContext, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
+import { type Prim, type PrimContext, entityBBox, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
+import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
 import { type Camera, viewBox, worldToScreen } from "./camera";
 
 export const DASH_PATTERNS: Record<string, number[]> = {
@@ -256,6 +257,44 @@ export function strokeEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawC
   ctx.setLineDash([]);
 }
 
+function drawEndings(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawContext) {
+  if (!e.style?.startEnding && !e.style?.endEnding) return;
+  const k = dc.layers.get(e.layerId)?.scale ?? 1;
+  const size = 3.2 * k;
+  const color = e.style?.color ?? dc.layers.get(e.layerId)?.color ?? dc.theme.ink;
+  for (const end of pathEnds(e)) {
+    const kind = endingKind(e, end.at);
+    if (!kind) continue;
+    const shape = endingOutline(end.tip, end.dir, kind, size);
+    ctx.beginPath();
+    shape.pts.forEach((p, i) => {
+      const s = worldToScreen(dc.cam, p);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    if (shape.fill) {
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+  if (e.locked) {
+    const b = entityBBox(e, dc.symbols);
+    if (!b) return;
+    const c = worldToScreen(dc.cam, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(c.x - 3, c.y - 4, 6, 5);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y - 4, 2, Math.PI, 0);
+    ctx.stroke();
+  }
+}
+
 export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<Entity>, dc: DrawContext) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -265,6 +304,19 @@ export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<E
     if (e.style?.fill) fillEntity(ctx, e, dc);
     if (e.kind === "symbol") fillSymbol(ctx, e, dc);
     strokeEntity(ctx, e, dc);
+    drawEndings(ctx, e, dc);
+    if (e.locked && !e.style?.startEnding && !e.style?.endEnding) {
+      const b = entityBBox(e, dc.symbols);
+      if (b) {
+        const c = worldToScreen(dc.cam, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(c.x - 3, c.y - 4, 6, 5);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - 4, 2, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
     if (e.kind === "symbol") for (const t of symbolTexts(e, dc.symbols)) drawText(ctx, t, dc);
   }
 }

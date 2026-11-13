@@ -2,7 +2,7 @@
 // protection, and the File shortcuts (Ctrl/⌘ N, O, S, Shift+S, P).
 import { useEffect } from "react";
 import { useDocumentStore } from "../state/useDocumentStore";
-import { forgetFileHandle, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
+import { forgetFileHandle } from "../state/fileCommands";
 import { parseDocument, serializeDocument } from "../io/nativeJson";
 import { clearRecovery, readRecovery, writeRecovery } from "../io/recovery";
 import { isTauri, setWindowTitle } from "../io/platform";
@@ -77,21 +77,5 @@ export function useAppLifecycle() {
     };
     window.addEventListener("beforeunload", before);
     return () => window.removeEventListener("beforeunload", before);
-  }, []);
-
-  // File shortcuts (the drawing view owns the editing shortcuts).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      const k = e.key.toLowerCase();
-      const run = k === "n" ? newDrawing : k === "o" ? openDrawing : k === "s" ? (e.shiftKey ? saveDrawingAs : saveDrawing) : k === "p" ? () => window.dispatchEvent(new Event("temaricad:plot")) : null;
-      if (!run) return;
-      e.preventDefault();
-      void run();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
   }, []);
 }

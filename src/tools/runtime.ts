@@ -87,13 +87,16 @@ function newStyle(s: ToolSettings, kind: string): Entity["style"] {
   if (s.dash && s.dash !== "solid") st.dash = s.dash;
   if (s.color) st.color = s.color;
   if (s.fill && FILLABLE.has(kind)) st.fill = s.fill;
+  if (s.startEnding) st.startEnding = s.startEnding;
+  if (s.endEnding) st.endEnding = s.endEnding;
   return st;
 }
 const empty = (): Overlay => ({ shapes: [], highlight: [], points: [] });
 
-function layerOk(doc: CadDocument) {
+function layerOk(doc: CadDocument, allowLocked = false) {
   const layers = new Map(doc.layers.map((l) => [l.id, l]));
   return (e: Entity) => {
+    if (e.locked && !allowLocked) return false;
     const l = layers.get(e.layerId);
     return !l || (l.visible && !l.locked);
   };
@@ -396,7 +399,7 @@ export class SelectTool implements Tool {
     if (this.mode === "marquee") return this.b.x < this.a.x ? "Crossing: selects anything the box touches" : "Inside: selects what the box fully encloses";
     if (this.method === "lasso") return "Drag a loop around what to select (Shift adds)";
     if (this.method === "polygon") return this.path.length ? "Next corner; Enter or double-click selects what is inside" : "Click the corners of an area";
-    return "Click to select (Shift adds), drag a box, drag a selection to move it, or drag a handle to reshape";
+    return this.note || "Click to select (Shift adds), drag a box, drag a selection to move it, or drag a handle to reshape. Alt-click selects a locked object";
   }
   from() {
     if (this.mode === "move") return this.base;
@@ -414,12 +417,16 @@ export class SelectTool implements Tool {
     return this.mode === "move" || this.mode === "pending" || this.mode === "grip";
   }
 
-  private ok() {
-    return layerOk(this.ctx.doc());
+  private note = "";
+
+  private ok(alt = false) {
+    const allow = layerOk(this.ctx.doc(), alt);
+    const filter = this.ctx.settings().selectFilter;
+    return (e: Entity) => allow(e) && (!filter || filter === "all" || e.kind === filter);
   }
 
-  private hit(p: Vec2): Id | null {
-    return this.ctx.index().nearest(p, this.ctx.tolerance(), this.ok())[0]?.entity.id ?? null;
+  private hit(p: Vec2, alt = false): Id | null {
+    return this.ctx.index().nearest(p, this.ctx.tolerance(), this.ok(alt))[0]?.entity.id ?? null;
   }
 
   /** A handle of a selected entity under the cursor. */
@@ -450,7 +457,19 @@ export class SelectTool implements Tool {
       if (!last || dist(last, e.raw) > 1e-12) this.path.push(e.raw);
       return;
     }
-    const id = this.hit(e.raw);
+    const visible = (ent: Entity) => {
+      const l = this.ctx.doc().layers.find((x) => x.id === ent.layerId);
+      return !l || (l.visible && !l.locked);
+    };
+    const top = this.ctx.index().nearest(e.raw, this.ctx.tolerance(), visible)[0]?.entity;
+    const filter = this.ctx.settings().selectFilter;
+    if (top?.locked && !e.alt && (!filter || filter === "all" || top.kind === filter)) {
+      this.note = "Locked — Alt-click to select it";
+      this.mode = "idle";
+      return;
+    }
+    this.note = "";
+    const id = this.hit(e.raw, e.alt);
     const members = id ? expandSelection(this.ctx.doc(), [id], "click") : [];
     // A group is one object: reshape it after Ungroup.
     const grouped = members.length > 1;

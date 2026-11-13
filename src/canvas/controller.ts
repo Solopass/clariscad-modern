@@ -5,15 +5,14 @@ import type { Entity, Id } from "../kernel/types";
 import { snap, type SnapResult } from "../kernel/snapEngine";
 import { entityBBox, unionBox } from "../kernel/prims";
 import { STANDARDS } from "../kernel/dimensions";
-import { duplicate } from "../state/arrange";
-import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
-import { groupSelection, ungroupSelection } from "../state/groups";
 import { sheetBounds, sheetPages } from "../state/sheetModel";
+import { matchShortcut } from "../input/keymap";
+import { runCommand } from "../input/runCommand";
 import { type Vec2, dist } from "../kernel/vec";
 import { useDocumentStore, newId } from "../state/useDocumentStore";
-import { useToolStore, type ToolId } from "../state/useToolStore";
+import { useToolStore } from "../state/useToolStore";
 import { useCursorStore } from "../state/useCursorStore";
-import { methodDef, TOOLS, type Shape } from "../tools/defs";
+import { methodDef, type Shape } from "../tools/defs";
 import { DrawTool, SelectTool, type PointerInfo, type Tool, type ToolContext } from "../tools/runtime";
 import { type Camera, fitBox, panBy, screenToWorld, viewBox, worldToScreen, zoomAt } from "./camera";
 import {
@@ -347,94 +346,38 @@ export class ViewportController {
   private onKey = (ev: KeyboardEvent) => {
     const t = ev.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    const ctrl = ev.ctrlKey || ev.metaKey;
-    const ds = useDocumentStore.getState();
-    if (ctrl && (ev.key === "z" || ev.key === "Z")) {
-      ev.preventDefault();
-      this.tool.cancel();
-      if (ev.shiftKey) ds.redo();
-      else ds.undo();
-      return;
-    }
-    if (ctrl && (ev.key === "y" || ev.key === "Y")) {
-      ev.preventDefault();
-      this.tool.cancel();
-      ds.redo();
-      return;
-    }
-    if (ctrl && (ev.key === "d" || ev.key === "D")) {
-      ev.preventDefault();
-      const g = useToolStore.getState().settings.gridSpacing;
-      duplicate({ x: g, y: -g });
-      return;
-    }
-    if (ctrl && (ev.key === "a" || ev.key === "A")) {
-      ev.preventDefault();
-      useToolStore.getState().setTool("select");
-      ds.setSelection(ds.doc.entities.map((e) => e.id));
-      return;
-    }
-    if (ctrl && (ev.key === "c" || ev.key === "C") && !ev.shiftKey) {
-      ev.preventDefault();
-      copySelection();
-      return;
-    }
-    if (ctrl && (ev.key === "x" || ev.key === "X") && !ev.shiftKey) {
-      ev.preventDefault();
-      cutSelection();
-      return;
-    }
-    if (ctrl && (ev.key === "v" || ev.key === "V") && !ev.shiftKey) {
-      ev.preventDefault();
-      pasteSelection();
-      return;
-    }
-    if (ctrl && (ev.key === "g" || ev.key === "G")) {
-      ev.preventDefault();
-      if (ev.shiftKey) ungroupSelection();
-      else groupSelection();
-      return;
-    }
-    if (ctrl && (ev.key === "i" || ev.key === "I")) {
-      ev.preventDefault();
-      window.dispatchEvent(new Event("temaricad:info"));
-      return;
-    }
     if (ev.key === " ") {
       this.spaceDown = true;
       ev.preventDefault();
       return;
     }
-    if (this.tool.key(ev.key, { shift: ev.shiftKey, ctrl })) {
+    const hit = matchShortcut(ev);
+    const host = {
+      zoomBy: (f: number) => this.zoomBy(f),
+      zoomFit: () => this.zoomFit(),
+      fitSheet: () => this.fitSheet(),
+      cancelTool: () => this.tool.cancel(),
+    };
+    // Modifier and Alt chords win over an in-progress command (Copy, Group, the grid toggle).
+    if (hit && (hit.chord.mod || hit.chord.alt)) {
+      ev.preventDefault();
+      runCommand(hit.id, host);
+      this.mark("overlay");
+      return;
+    }
+    // The active command gets Escape, Enter, C-to-close, Delete and the arrow keys first.
+    if (this.tool.key(ev.key, { shift: ev.shiftKey, ctrl: ev.ctrlKey || ev.metaKey })) {
       ev.preventDefault();
       this.mark("overlay");
       return;
     }
-    if (ctrl) {
-      if (ev.key === "=" || ev.key === "+") (ev.preventDefault(), this.zoomBy(1.5));
-      else if (ev.key === "-") (ev.preventDefault(), this.zoomBy(1 / 1.5));
-      else if (ev.key === "0") (ev.preventDefault(), this.zoomFit());
+    if (hit) {
+      ev.preventDefault();
+      runCommand(hit.id, host);
+      this.mark("overlay");
       return;
     }
-    if (ev.key === "Escape") {
-      useToolStore.getState().setTool("select");
-      return;
-    }
-    if (ev.key === "f" || ev.key === "F") {
-      if (ev.shiftKey) this.fitSheet();
-      else this.zoomFit();
-      return;
-    }
-    const tool = TOOLS.find((x) => x.key === ev.key.toLowerCase());
-    if (tool && !ev.altKey) {
-      if (tool.id === useToolStore.getState().tool) {
-        // Pressing the key again cycles through the tool's Methods.
-        const ms = tool.methods;
-        const cur = useToolStore.getState().methods[tool.id];
-        const i = ms.findIndex((m) => m.id === cur);
-        useToolStore.getState().setMethod(tool.id as ToolId, ms[(i + 1) % ms.length].id);
-      } else useToolStore.getState().setTool(tool.id);
-    }
+    if (ev.key === "Escape") useToolStore.getState().setTool("select");
   };
 
   private onKeyUp = (ev: KeyboardEvent) => {

@@ -3,7 +3,7 @@
 // distance. If none is in range, constraints apply (direction lock, angle
 // lock, grid), and otherwise the raw cursor point is used.
 import type { Entity, Id } from "./types";
-import { type Prim, closestOnPrim, primEnds, primPoint, primsOf } from "./prims";
+import { type Prim, closestOnPrim, primDeriv, primEnds, primPoint, primRange, primsOf } from "./prims";
 import { intersectPrims } from "./intersections";
 import type { EntityIndex } from "./spatialIndex";
 import {
@@ -12,6 +12,7 @@ import {
   add,
   angleInSweep,
   angleOf,
+  cross,
   dist,
   dot,
   fromAngle,
@@ -167,6 +168,33 @@ function primCandidates(p: Prim, id: Id, m: Modifiers, ctx: SnapContext, out: Ca
       const al = Math.acos(p.r / d);
       for (const a of [th + al, th - al])
         if (angleInSweep(a, p.start, p.sweep)) out.push({ point: add(p.c, fromAngle(a, p.r)), kind: "tangent", ids: [id] });
+    }
+  }
+  // Ellipse and spline: the tangent at u passes through `from` when (from − P) × P' = 0.
+  if (from && m.tangent && (p.t === "ell" || p.t === "curve")) {
+    const [lo, hi] = primRange(p);
+    const f = (u: number) => cross(sub(from, primPoint(p, u)), primDeriv(p, u));
+    const steps = p.t === "curve" ? 48 : 64;
+    const found: number[] = [];
+    for (let i = 0; i < steps; i++) {
+      const u0 = lo + ((hi - lo) * i) / steps;
+      const u1 = lo + ((hi - lo) * (i + 1)) / steps;
+      const f0 = f(u0);
+      const f1 = f(u1);
+      if (!Number.isFinite(f0) || !Number.isFinite(f1) || f0 * f1 > 0) continue;
+      let a = u0;
+      let b = u1;
+      for (let k = 0; k < 24; k++) {
+        const midU = (a + b) / 2;
+        if (f(a) * f(midU) <= 0) b = midU;
+        else a = midU;
+      }
+      const u = (a + b) / 2;
+      if (found.every((v) => Math.abs(v - u) > (hi - lo) / steps)) found.push(u);
+    }
+    for (const u of found) {
+      const pt = primPoint(p, u);
+      if (dist(pt, from) > 1e-6) out.push({ point: pt, kind: "tangent", ids: [id] });
     }
   }
 }

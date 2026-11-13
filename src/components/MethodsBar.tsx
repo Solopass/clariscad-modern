@@ -61,6 +61,29 @@ export function MethodsBar() {
         ))}
       </div>
       <div className="ml-2 flex items-center gap-3">
+        {tool === "select" && (
+          <Choice
+            label="Filter"
+            value={settings.selectFilter || "all"}
+            options={[
+              ["all", "All objects"],
+              ["line", "Lines"],
+              ["arc", "Arcs"],
+              ["circle", "Circles"],
+              ["ellipse", "Ellipses"],
+              ["rect", "Rectangles"],
+              ["polygon", "Polygons"],
+              ["polyline", "Polylines"],
+              ["spline", "Curves"],
+              ["text", "Text"],
+              ["dimension", "Dimensions"],
+              ["wall", "Walls"],
+              ["symbol", "Symbols"],
+              ["guide", "Guides"],
+            ]}
+            onChange={(v) => set("selectFilter", v)}
+          />
+        )}
         {tool === "doubleLine" && (
           <>
             <LengthField label="Width" value={settings.doubleLineWidth} min={0.001} onChange={(v) => set("doubleLineWidth", v)} />

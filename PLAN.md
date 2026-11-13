@@ -224,12 +224,10 @@ See `ARCHITECTURE.md` §5.
 
 ## Known gaps / notes
 
-Checked against Claris CAD 2.0v3 (release notes and the running program). Still open:
+Checked against Claris CAD 2.0v3. Still open, on purpose or still out of reach:
 
-- An object's ruler is the layer's scale, not a scale stored on the object. Claris magnified each object by the ruler it was drawn with; TemariCAD keeps one model space so snaps and intersections work across layers, and the scale sizes the page and the annotations.
-- Three or more walls meeting at one point are not mitred. Two-wall L, T and X joints clean themselves up, which is ahead of Claris's manual Clean Up command. The release notes' Open-T / overlapping-intersection clean-up (Command-click) is not a separate command.
-- Splines still can't be trimmed, split or offset. Ellipse offset is unsupported. A fillet between two arcs is the minor arc.
-- Tangent snap is circles and arcs only, not ellipses or splines.
-- A tangential touch between two curves (a double root) can be missed by the Newton intersection path.
-- No per-object lock, selection filter, line arrowheads, or in-place editing of a symbol. Groups are one level (grouping a group merges it).
-- Hatch lines are not written to DXF. The native menu bar is the in-window one, on purpose.
+- An object's ruler is the layer's scale. One shared model space is deliberate: snaps and intersections work across layers, and the scale sizes the page and the annotations. Per-object magnification is not planned.
+- A fillet of two arcs is the minor arc. A tangent touch between two curves (a double root) can still be missed.
+- Spline trim, split and offset, and ellipse offset, follow the curve with an interpolated spline. They are not an exact NURBS split.
+- Hatch lines are not written to DXF. Symbol editing is explode-and-remake. The menu bar stays inside the window so a native macOS menu would not fire the same shortcuts twice.
+- A few Claris keys are remapped because the browser owns them (view source, address bar, reload, tab switching). The shortcut panel lists the keys that are actually bound.

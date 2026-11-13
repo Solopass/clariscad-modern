@@ -7,6 +7,9 @@ export type Id = string;
 
 export type Justify = "center" | "left" | "right";
 
+/** A cap drawn at an open end of a line, arc, polyline, curve or partial ellipse. */
+export type LineEnding = "arrow" | "open" | "tick" | "dot";
+
 export interface StyleRef {
   /** Pen weight in mm on paper (0.13 – 2.00). */
   penWeight?: number;
@@ -17,6 +20,10 @@ export interface StyleRef {
   fill?: string;
   /** Pattern size multiplier (1 = the pattern's paper size at the layer scale). */
   fillScale?: number;
+  /** Cap at the start of an open path. */
+  startEnding?: LineEnding;
+  /** Cap at the end of an open path. */
+  endEnding?: LineEnding;
 }
 
 interface EntityBase {
@@ -24,10 +31,13 @@ interface EntityBase {
   layerId: Id;
   style?: StyleRef;
   /**
-   * Shared by every member of a group. Selecting, moving or copying one member
-   * treats the whole group as a single object; Ungroup clears it.
+   * Group membership, outermost first. `groups[0]` is the group a click selects;
+   * later ids are groups nested inside it. Ungroup peels the first id.
+   * A dimension's chain id is `groupId` on that entity, not this list.
    */
-  groupId?: Id;
+  groups?: Id[];
+  /** Locked objects stay snappable and visible, and are not selected or edited. Alt-click selects one. */
+  locked?: boolean;
 }
 
 export interface LineEntity extends EntityBase {

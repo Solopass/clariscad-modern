@@ -1,6 +1,6 @@
 // Attributes: pen weight, dash, colour and fill. With a selection they edit it;
 // they always set the defaults for new objects.
-import type { StyleRef } from "../kernel/types";
+import type { LineEnding, StyleRef } from "../kernel/types";
 import { PATTERNS } from "../kernel/hatch";
 import { DASH_PATTERNS } from "../canvas/render";
 import { useDocumentStore } from "../state/useDocumentStore";
@@ -22,6 +22,15 @@ export function AttributesPalette({ onClose }: { onClose(): void }) {
   const color = sel ? (sel.color ?? "") : settings.color;
   const fill = sel ? (sel.fill ?? "") : settings.fill;
   const fillScale = sel?.fillScale ?? 1;
+  const startCap = sel ? (sel.startEnding ?? "") : settings.startEnding;
+  const endCap = sel ? (sel.endEnding ?? "") : settings.endEnding;
+  const caps: [string, string][] = [
+    ["", "None"],
+    ["arrow", "Arrow"],
+    ["open", "Open"],
+    ["tick", "Tick"],
+    ["dot", "Dot"],
+  ];
 
   const apply = (changes: Partial<StyleRef>, defaults: () => void) => {
     defaults();
@@ -85,7 +94,27 @@ export function AttributesPalette({ onClose }: { onClose(): void }) {
             </select>
           </label>
         )}
-        <p className="text-[10px] leading-tight text-[#666]">Fills apply to closed shapes and walls. View ▸ Show Line Weights shows pens at paper width.</p>
+        <label className="flex items-center justify-between">
+          Start
+          <select className="mac-field w-[100px]" value={startCap} onChange={(e) => apply({ startEnding: (e.target.value || undefined) as LineEnding | undefined }, () => set("startEnding", (e.target.value || "") as "" | LineEnding))}>
+            {caps.map(([v, name]) => (
+              <option key={v} value={v}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center justify-between">
+          End
+          <select className="mac-field w-[100px]" value={endCap} onChange={(e) => apply({ endEnding: (e.target.value || undefined) as LineEnding | undefined }, () => set("endEnding", (e.target.value || "") as "" | LineEnding))}>
+            {caps.map(([v, name]) => (
+              <option key={v || "none"} value={v}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-[10px] leading-tight text-[#666]">Arrows sit on open lines, arcs and curves. Fills apply to closed shapes and walls.</p>
       </div>
     </Palette>
   );

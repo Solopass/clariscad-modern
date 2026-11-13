@@ -35,18 +35,21 @@ export function copyEntities(ents: Entity[], T: Transform2D, idFn: () => Id = ne
   const map = new Map<Id, Id>();
   const groups = new Map<Id, Id>();
   for (const e of ents) map.set(e.id, idFn());
-  // A copied group is its own group, so it doesn't stay glued to the original.
-  const groupOf = (g?: Id) => {
-    if (!g) return undefined;
+  // A copied group is its own group, nesting included, so it doesn't stay glued to the original.
+  const groupOf = (g: Id) => {
     let n = groups.get(g);
     if (!n) groups.set(g, (n = idFn()));
     return n;
   };
   return ents.map((e) => {
     const c = transformEntity(e, T);
-    const { groupId: _old, ...rest } = c;
-    const groupId = groupOf(e.groupId);
-    const base = { ...rest, id: map.get(e.id)!, ...(groupId ? { groupId } : {}) } as Entity;
+    const chain = c.kind === "dimension" ? c.groupId : undefined;
+    const rest: Entity = { ...c, id: map.get(e.id)! };
+    delete rest.groups;
+    if (rest.kind === "dimension") delete rest.groupId;
+    const nested = e.groups?.map(groupOf);
+    const chainId = chain ? groupOf(chain) : undefined;
+    const base = { ...rest, id: map.get(e.id)!, ...(nested?.length ? { groups: nested } : {}), ...(chainId ? { groupId: chainId } : {}) } as Entity;
     if (base.kind === "dimension") {
       return { ...base, refs: base.refs.map((r) => (r && map.has(r.entityId) ? { ...r, entityId: map.get(r.entityId)! } : null)) };
     }
