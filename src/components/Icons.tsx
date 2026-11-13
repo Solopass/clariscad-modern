@@ -97,6 +97,20 @@ export function ToolIcon({ id }: { id: ToolId }) {
             <path d="M6 14 L6 6 M6 14 A 8 8 0 0 0 14 6" {...S} />
           </g>
         );
+      case "measure":
+        return (
+          <g>
+            <rect x="2.5" y="6.5" width="15" height="7" {...S} />
+            <path d="M5.5 6.5 L5.5 10 M8.5 6.5 L8.5 9 M11.5 6.5 L11.5 10 M14.5 6.5 L14.5 9" {...S} />
+          </g>
+        );
+      case "hatch":
+        return (
+          <g>
+            <rect x="3" y="3" width="14" height="14" {...S} />
+            <path d="M3 9 L9 3 M3 15 L15 3 M7 17 L17 7 M13 17 L17 13" {...S} />
+          </g>
+        );
     }
   })();
   return (

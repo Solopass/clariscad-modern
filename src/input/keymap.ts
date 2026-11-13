@@ -56,6 +56,8 @@ const COMMANDS: Shortcut[] = [
   { id: "view.zoomOut", label: "Zoom Out", section: "View", chord: mod("-") },
   { id: "view.fit", label: "Fit to Drawing", section: "View", chord: { key: "f" }, remap: "Ctrl/⌘0 resets the browser’s own zoom and cannot be overridden, so Fit is the F key." },
   { id: "view.fitPage", label: "Fit Page", section: "View", chord: { key: "f", shift: true } },
+  { id: "view.zoomSelection", label: "Zoom to Selection", section: "View", chord: { key: "f", alt: true } },
+  { id: "view.prev", label: "Previous View", section: "View", chord: { key: "ArrowLeft", alt: true } },
   { id: "view.grid", label: "Show Grid", section: "View", chord: { key: "g", alt: true }, remap: "Ctrl/⌘R reloads the page, so the grid toggle is Alt+G." },
   { id: "view.weights", label: "Line Weights", section: "View", chord: { key: "w", alt: true } },
 

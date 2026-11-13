@@ -4,7 +4,7 @@ import type { BBox } from "../kernel/types";
 import type { DisplayList, Mark, PaperSize } from "./plot";
 import { type PdfPage, buildPdf, n, pdfString } from "./pdfWriter";
 import { type PlotStyle, colorFor, penFor } from "./svgExporter";
-import { textWidth } from "../kernel/textMetrics";
+import { LINE_HEIGHT, textLines, textWidth } from "../kernel/textMetrics";
 import type { TitleMark } from "../state/titleBlock";
 
 const PT = 72 / 25.4; // points per mm
@@ -161,11 +161,18 @@ function markOps(m: Mark, X: (x: number) => number, Y: (y: number) => number, sc
       const size = (m.height / scale) * PT;
       if (size < 0.5) return [];
       const [r, g, bl] = rgb(colorFor(m.color, o));
-      const w = textWidth(m.str, size);
-      const shift = m.align === "left" ? 0 : m.align === "center" ? -w / 2 : -w;
       const c = Math.cos(m.angle);
       const s = Math.sin(m.angle);
-      return [`${n(r)} ${n(g)} ${n(bl)} rg`, `BT /F1 ${n(size)} Tf ${n(c)} ${n(s)} ${n(-s)} ${n(c)} ${n(X(m.pos.x))} ${n(Y(m.pos.y))} Tm ${n(shift)} 0 Td ${pdfString(m.str)} Tj ET`];
+      const step = LINE_HEIGHT * m.height;
+      const ops = [`${n(r)} ${n(g)} ${n(bl)} rg`];
+      textLines(m.str).forEach((line, i) => {
+        const w = textWidth(line, size);
+        const shift = m.align === "left" ? 0 : m.align === "center" ? -w / 2 : -w;
+        const px = m.pos.x + s * step * i;
+        const py = m.pos.y - c * step * i;
+        ops.push(`BT /F1 ${n(size)} Tf ${n(c)} ${n(s)} ${n(-s)} ${n(c)} ${n(X(px))} ${n(Y(py))} Tm ${n(shift)} 0 Td ${pdfString(line)} Tj ET`);
+      });
+      return ops;
     }
   }
 }

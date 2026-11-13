@@ -169,18 +169,46 @@ function lineCurve(A: Prim, o: Vec2, d: Vec2, B: Prim, opts: IntersectOptions): 
   const g = (t: number) => cross(sub(primPoint(target, t), o), d);
   const [lo, hi] = primRange(target);
   const seeds: number[] = [];
+  const dd = dot(d, d);
+  const nearTol = 2e-4 * Math.max(1, sizeOf(target)) * Math.sqrt(dd);
   for (let i = 0; i + 1 < pts.length; i++) {
     const g0 = cross(sub(pts[i], o), d);
     const g1 = cross(sub(pts[i + 1], o), d);
     if (g0 === 0 || g0 * g1 < 0 || (i + 2 === pts.length && g1 === 0)) seeds.push(params[i] + (params[i + 1] - params[i]) * (g0 / (g0 - g1 || 1)));
+    else if (Math.abs(g0) < nearTol || Math.abs(g1) < nearTol) seeds.push((params[i] + params[i + 1]) / 2);
   }
   const out: Hit[] = [];
-  const dd = dot(d, d);
   for (let t of seeds) {
     for (let it = 0; it < 40; it++) {
       const gt = g(t);
       const dg = cross(primDeriv(target, t), d);
-      if (dg === 0) break;
+      if (Math.abs(dg) < 1e-12 * Math.max(1, sizeOf(target)) * Math.sqrt(dd)) {
+        // Tangent touch (double root): golden-section on |g(t)| in a narrow bracket.
+        let a = Math.max(lo, t - (hi - lo) * 1e-3);
+        let b = Math.min(hi, t + (hi - lo) * 1e-3);
+        const phi = (Math.sqrt(5) - 1) / 2;
+        let x1 = b - phi * (b - a);
+        let x2 = a + phi * (b - a);
+        let f1 = Math.abs(g(x1));
+        let f2 = Math.abs(g(x2));
+        for (let k = 0; k < 50; k++) {
+          if (f1 < f2) {
+            b = x2;
+            x2 = x1;
+            f2 = f1;
+            x1 = b - phi * (b - a);
+            f1 = Math.abs(g(x1));
+          } else {
+            a = x1;
+            x1 = x2;
+            f1 = f2;
+            x2 = a + phi * (b - a);
+            f2 = Math.abs(g(x2));
+          }
+        }
+        t = (a + b) / 2;
+        break;
+      }
       const next = Math.min(hi, Math.max(lo, t - gt / dg));
       if (Math.abs(next - t) < 1e-15) break;
       t = next;
@@ -212,20 +240,27 @@ function curveCurve(A0: Prim, B0: Prim, opts: IntersectOptions): Hit[] {
   if (ba && bb && (ba.maxX < bb.minX || bb.maxX < ba.minX || ba.maxY < bb.minY || bb.maxY < ba.minY)) return [];
 
   const seeds: [number, number][] = [];
+  const nearDist = 4e-4 * Math.max(1, scaleLen);
   for (let i = 0; i + 1 < fa.pts.length; i++) {
     const a0 = fa.pts[i];
     const a1 = fa.pts[i + 1];
+    const minAx = Math.min(a0.x, a1.x) - nearDist;
+    const maxAx = Math.max(a0.x, a1.x) + nearDist;
+    const minAy = Math.min(a0.y, a1.y) - nearDist;
+    const maxAy = Math.max(a0.y, a1.y) + nearDist;
     for (let j = 0; j + 1 < fb.pts.length; j++) {
       const b0 = fb.pts[j];
       const b1 = fb.pts[j + 1];
-      if (Math.max(a0.x, a1.x) < Math.min(b0.x, b1.x) || Math.max(b0.x, b1.x) < Math.min(a0.x, a1.x)) continue;
-      if (Math.max(a0.y, a1.y) < Math.min(b0.y, b1.y) || Math.max(b0.y, b1.y) < Math.min(a0.y, a1.y)) continue;
+      if (maxAx < Math.min(b0.x, b1.x) || Math.max(b0.x, b1.x) < minAx) continue;
+      if (maxAy < Math.min(b0.y, b1.y) || Math.max(b0.y, b1.y) < minAy) continue;
       const st = segSegParams(a0, a1, b0, b1);
       if (st)
         seeds.push([
           fa.params[i] + (fa.params[i + 1] - fa.params[i]) * st[0],
           fb.params[j] + (fb.params[j + 1] - fb.params[j]) * st[1],
         ]);
+      else if (dist(a0, b0) < nearDist || dist(a1, b1) < nearDist)
+        seeds.push([(fa.params[i] + fa.params[i + 1]) / 2, (fb.params[j] + fb.params[j + 1]) / 2]);
     }
   }
 
@@ -235,14 +270,39 @@ function curveCurve(A0: Prim, B0: Prim, opts: IntersectOptions): Hit[] {
   const clampB = (t: number) => (B.t === "curve" ? Math.min(bhi, Math.max(blo, t)) : t);
   const out: Hit[] = [];
   for (let [s, t] of seeds) {
-    for (let it = 0; it < 40; it++) {
+    let lambda = 1e-10;
+    for (let it = 0; it < 50; it++) {
       const F = sub(primPoint(A, s), primPoint(B, t));
+      const err2 = F.x * F.x + F.y * F.y;
+      if (err2 < 1e-24) break;
       const da = primDeriv(A, s);
       const db = primDeriv(B, t);
       const det = -da.x * db.y + da.y * db.x;
-      if (det === 0) break;
-      const ds = (-F.x * -db.y - -db.x * -F.y) / det;
-      const dt = (da.x * -F.y - da.y * -F.x) / det;
+      let ds: number;
+      let dt: number;
+      if (Math.abs(det) > 1e-10 * Math.max(1, scaleLen * scaleLen)) {
+        ds = (-F.x * -db.y - -db.x * -F.y) / det;
+        dt = (da.x * -F.y - da.y * -F.x) / det;
+      } else {
+        // Damped Gauss-Newton (Levenberg-Marquardt) for tangent touches.
+        const j00 = da.x * da.x + da.y * da.y + lambda;
+        const j11 = db.x * db.x + db.y * db.y + lambda;
+        const j01 = -(da.x * db.x + da.y * db.y);
+        const g0 = da.x * F.x + da.y * F.y;
+        const g1 = -(db.x * F.x + db.y * F.y);
+        const hdet = j00 * j11 - j01 * j01;
+        if (hdet === 0) break;
+        ds = -(g0 * j11 - g1 * j01) / hdet;
+        dt = -(j00 * g1 - j01 * g0) / hdet;
+        const ns = clampA(s + ds);
+        const nt = clampB(t + dt);
+        const nF = sub(primPoint(A, ns), primPoint(B, nt));
+        if (nF.x * nF.x + nF.y * nF.y < err2) lambda = Math.max(1e-14, lambda * 0.3);
+        else {
+          lambda *= 10;
+          continue;
+        }
+      }
       s = clampA(s + ds);
       t = clampB(t + dt);
       if (Math.abs(ds) + Math.abs(dt) < 1e-15) break;

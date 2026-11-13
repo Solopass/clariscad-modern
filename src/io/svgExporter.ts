@@ -1,4 +1,5 @@
 // True-size SVG: one paper millimetre per SVG unit, with width/height in mm.
+import { LINE_HEIGHT, textLines } from "../kernel/textMetrics";
 import type { DisplayList, Mark } from "./plot";
 import { PEN_BY_COLOR } from "./plot";
 
@@ -51,9 +52,15 @@ export function exportSvg(dl: DisplayList, st: PlotStyle): string {
       case "text": {
         const anchor = m.align === "left" ? "start" : m.align === "center" ? "middle" : "end";
         const deg = (-m.angle * 180) / Math.PI;
-        body.push(
-          `<text x="${f(X(m.pos.x))}" y="${f(Y(m.pos.y))}" font-family="Helvetica, Arial, sans-serif" font-size="${f(m.height / s)}" text-anchor="${anchor}" fill="${colorFor(m.color, st)}" transform="rotate(${f(deg)} ${f(X(m.pos.x))} ${f(Y(m.pos.y))})">${esc(m.str)}</text>`,
-        );
+        const lines = textLines(m.str);
+        const step = LINE_HEIGHT * m.height;
+        lines.forEach((line, i) => {
+          const px = m.pos.x + Math.sin(m.angle) * step * i;
+          const py = m.pos.y - Math.cos(m.angle) * step * i;
+          body.push(
+            `<text x="${f(X(px))}" y="${f(Y(py))}" font-family="Helvetica, Arial, sans-serif" font-size="${f(m.height / s)}" text-anchor="${anchor}" fill="${colorFor(m.color, st)}" transform="rotate(${f(deg)} ${f(X(px))} ${f(Y(py))})">${esc(line)}</text>`,
+          );
+        });
         return;
       }
     }

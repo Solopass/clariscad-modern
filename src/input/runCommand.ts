@@ -1,6 +1,6 @@
 // What a shortcut does. Dialogs are opened by an event the menu bar listens for,
 // so the key and the menu item share one implementation.
-import { alignSelection, duplicate, flipSelection, reorder, selectionCenter } from "../state/arrange";
+import { alignSelection, booleanSelection, duplicate, flipSelection, reorder, selectionCenter } from "../state/arrange";
 import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
 import { exportDxfFile, exportPngFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
@@ -16,6 +16,8 @@ import { TOOLS } from "../tools/defs";
 export interface CommandHost {
   zoomBy(factor: number): void;
   zoomFit(): void;
+  zoomSelection?(): void;
+  previousView?(): void;
   fitSheet(): void;
   cancelTool(): void;
 }
@@ -111,6 +113,12 @@ export function runCommand(id: string, host: CommandHost): boolean {
     case "view.fitPage":
       host.fitSheet();
       return true;
+    case "view.zoomSelection":
+      host.zoomSelection?.();
+      return true;
+    case "view.prev":
+      host.previousView?.();
+      return true;
     case "view.grid":
       useToolStore.getState().setSetting("gridVisible", !useToolStore.getState().settings.gridVisible);
       return true;
@@ -137,6 +145,15 @@ export function runCommand(id: string, host: CommandHost): boolean {
       return true;
     case "arrange.flipH":
       flipSelection("horizontal", center());
+      return true;
+    case "arrange.union":
+      booleanSelection("union");
+      return true;
+    case "arrange.subtract":
+      booleanSelection("subtract");
+      return true;
+    case "arrange.intersect":
+      booleanSelection("intersect");
       return true;
     case "arrange.flipV":
       flipSelection("vertical", center());

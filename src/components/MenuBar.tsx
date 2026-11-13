@@ -13,7 +13,7 @@ import { explodeSelection, makeSymbol } from "../state/symbols";
 import { editDimensionText, flipSelectedDimensions } from "../state/dimEdit";
 import { flipDoorSwings } from "../state/wallEdit";
 import { toggleSymbolEdit } from "../state/symbolEdit";
-import { alignSelection, duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
+import { alignSelection, booleanSelection, duplicate, flipSelection, polarArray, reorder, rotateSelection, scaleSelection, selectionCenter, stepAndRepeat } from "../state/arrange";
 import { copySelection, cutSelection, pasteSelection } from "../state/clipboard";
 import { groupSelection, lockSelection, ungroupSelection, unlockSelection } from "../state/groups";
 import { describeSelection } from "../state/inspect";
@@ -172,6 +172,8 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
         { label: "Zoom Out", shortcut: sc("view.zoomOut"), run: () => viewportRef.current?.zoomBy(1 / 1.5) },
         { label: "Fit to Drawing", shortcut: sc("view.fit"), run: () => viewportRef.current?.zoomFit() },
         { label: "Fit Page", shortcut: sc("view.fitPage"), run: () => viewportRef.current?.fitSheet() },
+        { label: "Zoom to Selection", shortcut: sc("view.zoomSelection"), disabled: !ds.selection.size, run: () => viewportRef.current?.zoomSelection() },
+        { label: "Previous View", shortcut: sc("view.prev"), run: () => viewportRef.current?.previousView() },
         "-",
         { label: "Show Grid", shortcut: sc("view.grid"), checked: settings.gridVisible, run: () => setSetting("gridVisible", !settings.gridVisible) },
         { label: "Show Line Weights", shortcut: sc("view.weights"), checked: settings.showWeights, run: () => setSetting("showWeights", !settings.showWeights) },
@@ -190,6 +192,10 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
           { label: "Ungroup", shortcut: sc("arrange.ungroup"), disabled: !grouped, run: ungroupSelection },
           { label: "Lock", shortcut: sc("arrange.lock"), disabled: none, run: lockSelection },
           { label: "Unlock", shortcut: sc("arrange.unlock"), run: unlockSelection },
+          "-",
+          { label: "Union", disabled: one, run: () => booleanSelection("union") },
+          { label: "Subtract (First − Rest)", disabled: one, run: () => booleanSelection("subtract") },
+          { label: "Intersect", disabled: one, run: () => booleanSelection("intersect") },
           "-",
           { label: "Duplicate", shortcut: sc("edit.duplicate"), disabled: none, run: () => duplicate({ x: g, y: -g }) },
           {

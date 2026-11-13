@@ -26,7 +26,9 @@ export type ToolId =
   | "symbol"
   | "text"
   | "cleanup"
-  | "match";
+  | "match"
+  | "measure"
+  | "hatch";
 
 export type TrimModeSetting = "both" | "first" | "none";
 
@@ -118,6 +120,8 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   text: "place",
   cleanup: "openT",
   match: "selection",
+  measure: "distance",
+  hatch: "region",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {

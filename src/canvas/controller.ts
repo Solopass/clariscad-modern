@@ -146,6 +146,13 @@ export class ViewportController {
 
   // ------------------------------------------------------------ view commands
 
+  private viewHistory: Camera[] = [];
+
+  private pushView() {
+    this.viewHistory.push({ ...this.cam });
+    if (this.viewHistory.length > 20) this.viewHistory.shift();
+  }
+
   zoomBy(f: number) {
     this.cam = zoomAt(this.cam, { x: this.cam.width / 2, y: this.cam.height / 2 }, f);
     this.publishView();
@@ -160,7 +167,31 @@ export class ViewportController {
       if (b) box = box ? unionBox(box, b) : b;
     }
     if (!box) return this.fitSheet();
+    this.pushView();
     this.cam = fitBox(this.cam, box);
+    this.publishView();
+    this.mark("grid", "static", "overlay");
+  }
+
+  zoomSelection() {
+    const { doc, index, selection } = useDocumentStore.getState();
+    let box = null;
+    for (const e of doc.entities) {
+      if (!selection.has(e.id)) continue;
+      const b = entityBBox(e, index.ctx);
+      if (b) box = box ? unionBox(box, b) : b;
+    }
+    if (!box) return;
+    this.pushView();
+    this.cam = fitBox(this.cam, box);
+    this.publishView();
+    this.mark("grid", "static", "overlay");
+  }
+
+  previousView() {
+    const prev = this.viewHistory.pop();
+    if (!prev) return;
+    this.cam = { ...prev, width: this.cam.width, height: this.cam.height };
     this.publishView();
     this.mark("grid", "static", "overlay");
   }
@@ -368,6 +399,8 @@ export class ViewportController {
     const host = {
       zoomBy: (f: number) => this.zoomBy(f),
       zoomFit: () => this.zoomFit(),
+      zoomSelection: () => this.zoomSelection(),
+      previousView: () => this.previousView(),
       fitSheet: () => this.fitSheet(),
       cancelTool: () => this.tool.cancel(),
     };

@@ -234,3 +234,23 @@ export function formatAngle(rad: number, precision = 2): string {
   deg = ((deg % 360) + 360) % 360;
   return `${deg.toFixed(precision)}°`;
 }
+
+export function formatArea(mm2: number, system: UnitSystem): string {
+  const a = Math.abs(mm2);
+  switch (system) {
+    case "architectural":
+    case "engineering":
+    case "feet": {
+      const sqFt = a / (MM_PER.ft * MM_PER.ft);
+      return sqFt < 0.1 && system === "architectural" ? `${(a / (MM_PER.in * MM_PER.in)).toFixed(2)} sq in` : `${sqFt.toFixed(3)} sq ft`;
+    }
+    case "inches":
+      return `${(a / (MM_PER.in * MM_PER.in)).toFixed(3)} sq in`;
+    case "mm":
+      return `${a.toFixed(1)} mm²`;
+    case "cm":
+      return `${(a / (MM_PER.cm * MM_PER.cm)).toFixed(2)} cm²`;
+    case "m":
+      return `${(a / (MM_PER.m * MM_PER.m)).toFixed(4)} m²`;
+  }
+}

@@ -5,7 +5,8 @@ import { translation } from "../kernel/transform";
 import { mirrorAcross, rotateAbout, scaleAbout, transformEntity, translateEntity } from "../kernel/edit";
 import { entityBBox, unionBox } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
-import { addPatch, replacePatch, type Patch } from "./ops";
+import { booleanPolygons, entityToRing, type BooleanOp } from "../kernel/regionOps";
+import { addPatch, replacePatch, type Op, type Patch } from "./ops";
 import { newId, useDocumentStore } from "./useDocumentStore";
 
 const store = () => useDocumentStore.getState();
@@ -152,5 +153,53 @@ export function reorder(where: "front" | "back") {
   const after = where === "front" ? [...rest, ...sel] : [...sel, ...rest];
   if (after.every((id, i) => id === before[i])) return;
   store().commit({ label: where === "front" ? "Bring to Front" : "Send to Back", ops: [{ op: "reorder", before, after }] });
+}
+
+const OP_LABEL: Record<BooleanOp, string> = { union: "Union", subtract: "Subtract", intersect: "Intersect" };
+
+/** Combine two or more closed shapes with Union, Subtract (first minus rest), or Intersect. */
+export function booleanSelection(op: BooleanOp): boolean {
+  const { doc, index, selection } = store();
+  const src = doc.entities.filter((e) => selection.has(e.id));
+  if (src.length < 2) return false;
+  const ringsList: Vec2[][][] = [];
+  for (const e of src) {
+    const r = entityToRing(e, index.ctx);
+    if (!r) return false;
+    ringsList.push([r]);
+  }
+  let acc = ringsList[0];
+  for (let i = 1; i < ringsList.length; i++) {
+    acc = booleanPolygons(acc, ringsList[i], op);
+    if (!acc.length) break;
+  }
+  const template = src[0];
+  const ops: Op[] = [];
+  const nextIds: Id[] = [];
+  // Remove in descending draw-order index so undo restores exact positions.
+  const ordered = doc.entities
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => selection.has(e.id))
+    .sort((a, b) => b.i - a.i);
+  for (const { e, i } of ordered) ops.push({ op: "remove", entity: e, index: i });
+  const baseIdx = doc.entities.length - ordered.length;
+  acc.forEach((pts, k) => {
+    const id = newId();
+    nextIds.push(id);
+    ops.push({
+      op: "add",
+      index: baseIdx + k,
+      entity: {
+        id,
+        layerId: template.layerId,
+        kind: "polyline",
+        points: pts,
+        closed: true,
+        ...(template.style ? { style: template.style } : {}),
+      },
+    });
+  });
+  commitAndSelect({ label: OP_LABEL[op], ops }, nextIds);
+  return true;
 }
 

@@ -2,7 +2,7 @@
 // camera in float64; the canvas only ever sees screen pixels.
 import type { CadDocument, DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
 import { type DimStyle, dimGeometry } from "../kernel/dimensions";
-import { textWidth } from "../kernel/textMetrics";
+import { LINE_HEIGHT, textLines, textWidth } from "../kernel/textMetrics";
 import { type GripCtx, gripsOf } from "../kernel/handles";
 import { entityHatch, fillRings, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
@@ -431,7 +431,8 @@ export function drawText(ctx: CanvasRenderingContext2D, e: Extract<Entity, { kin
   ctx.textAlign = e.align;
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = color ?? e.style?.color ?? layer?.color ?? dc.theme.ink;
-  ctx.fillText(e.text, 0, 0);
+  const lines = textLines(e.text);
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], 0, i * LINE_HEIGHT * px);
   ctx.restore();
 }
 

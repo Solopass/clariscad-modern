@@ -5,7 +5,8 @@ import type { Entity } from "../kernel/types";
 import { entityBBox, unionBox } from "../kernel/prims";
 import { scaleAbout, transformEntity, translateEntity } from "../kernel/edit";
 import { multiply, translation, type Transform2D } from "../kernel/transform";
-import { formatLength } from "../kernel/units";
+import { formatArea, formatLength } from "../kernel/units";
+import { entityAreaAndPerimeter } from "../kernel/regionOps";
 import { angleOf, dist } from "../kernel/vec";
 import type { DialogField } from "../components/Dialog";
 import { replacePatch } from "./ops";
@@ -83,9 +84,10 @@ export function describeSelection(): InfoSpec | null {
       };
     }
     if (e.kind === "circle") {
+      const m = entityAreaAndPerimeter(e, store().index.ctx)!;
       return {
         title: "Circle",
-        note: `Diameter ${formatLength(e.r * 2, units)}`,
+        note: `Diameter ${formatLength(e.r * 2, units)}, area ${formatArea(m.area, units)}, circumference ${formatLength(m.perimeter, units)}`,
         fields: [
           { key: "x", label: "Center X", kind: "length", value: e.center.x },
           { key: "y", label: "Center Y", kind: "length", value: e.center.y },
@@ -124,9 +126,10 @@ export function describeSelection(): InfoSpec | null {
       };
     }
     if (e.kind === "rect") {
+      const m = entityAreaAndPerimeter(e, store().index.ctx)!;
       return {
         title: "Rectangle",
-        note: e.cornerRadius > 0 ? `Corner radius ${formatLength(e.cornerRadius, units)}` : "Square corners",
+        note: `Area ${formatArea(m.area, units)}, perimeter ${formatLength(m.perimeter, units)}${e.cornerRadius > 0 ? `, corner radius ${formatLength(e.cornerRadius, units)}` : ""}`,
         fields: [
           { key: "x", label: "Center X", kind: "length", value: e.center.x },
           { key: "y", label: "Center Y", kind: "length", value: e.center.y },
@@ -148,9 +151,10 @@ export function describeSelection(): InfoSpec | null {
       };
     }
     if (e.kind === "ellipse") {
+      const m = entityAreaAndPerimeter(e, store().index.ctx);
       return {
         title: "Ellipse",
-        note: "",
+        note: m ? `Area ${formatArea(m.area, units)}, perimeter ${formatLength(m.perimeter, units)}` : "",
         fields: [
           { key: "x", label: "Center X", kind: "length", value: e.center.x },
           { key: "y", label: "Center Y", kind: "length", value: e.center.y },
@@ -194,9 +198,22 @@ export function describeSelection(): InfoSpec | null {
   if (!c) return null;
   const kinds = new Set(ents.map((e) => e.kind));
   const grouped = ents.some((e) => e.groups?.length);
+  let totalArea = 0;
+  let totalPerim = 0;
+  let areaCount = 0;
+  const { ctx } = store().index;
+  for (const e of ents) {
+    const m = entityAreaAndPerimeter(e, ctx);
+    if (m) {
+      totalArea += m.area;
+      totalPerim += m.perimeter;
+      areaCount++;
+    }
+  }
+  const areaNote = areaCount ? ` Area ${formatArea(totalArea, units)}, perimeter ${formatLength(totalPerim, units)}.` : "";
   return {
     title: ents.length === 1 ? ents[0].kind : grouped ? "Group" : "Selection",
-    note: `${ents.length} object${ents.length === 1 ? "" : "s"}${kinds.size === 1 ? "" : ` (${kinds.size} kinds)`}. Moving the center moves them together.`,
+    note: `${ents.length} object${ents.length === 1 ? "" : "s"}${kinds.size === 1 ? "" : ` (${kinds.size} kinds)`}.${areaNote}`,
     fields: [
       { key: "x", label: "Center X", kind: "length", value: c.x },
       { key: "y", label: "Center Y", kind: "length", value: c.y },

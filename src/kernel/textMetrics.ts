@@ -20,24 +20,34 @@ export function charWidth(ch: string): number {
   return EXTRA[ch] ?? 556;
 }
 
-/** Width of `str` at em size `h`. */
-export function textWidth(str: string, h: number): number {
+export const LINE_HEIGHT = 1.35;
+
+export const textLines = (str: string): string[] => str.split(/\r?\n/);
+
+function singleLineWidth(str: string, h: number): number {
   let w = 0;
   for (const ch of str) w += charWidth(ch);
   return (w / 1000) * h;
 }
 
+/** Width of `str` (or its widest line) at em size `h`. */
+export function textWidth(str: string, h: number): number {
+  let max = 0;
+  for (const line of textLines(str)) max = Math.max(max, singleLineWidth(line, h));
+  return max;
+}
+
 export type TextAlign = "left" | "center" | "right";
 
 /**
- * Corners of a text box (CCW from bottom-left). The anchor is on the baseline at
- * the left, centre or right; the box runs from 0.22 em below the baseline
- * (descenders) to 0.78 em above it.
+ * Corners of a text box (CCW from bottom-left). The anchor is on the first line's
+ * baseline at the left, centre or right; additional lines step down by LINE_HEIGHT * h.
  */
 export function textBoxCorners(anchor: Vec2, str: string, h: number, angle: number, align: TextAlign = "left"): Vec2[] {
+  const lines = textLines(str);
   const w = textWidth(str, h);
   const x0 = align === "left" ? 0 : align === "center" ? -w / 2 : -w;
-  const lo = -0.22 * h;
+  const lo = -0.22 * h - Math.max(0, lines.length - 1) * LINE_HEIGHT * h;
   const hi = 0.78 * h;
   return [
     { x: x0, y: lo },

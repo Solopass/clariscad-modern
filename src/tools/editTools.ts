@@ -5,7 +5,9 @@ import { entityBBox, primsOf, closestOnPrim } from "../kernel/prims";
 import { chamfer, extendTo, fillet, offsetEntity, splitAt, trimAt, trimPiece, type EditResult } from "../kernel/booleanOps";
 import { handleAt } from "../kernel/handles";
 import { breakForCrossing, extendToBar, fitOpening, wallParam } from "../kernel/wallSolver";
-import { type Vec2, add, dist, normalize, perp, scale, sub } from "../kernel/vec";
+import { findEnclosedRegion, ringArea, ringPerimeter } from "../kernel/regionOps";
+import { formatAngle, formatArea, formatLength } from "../kernel/units";
+import { type Vec2, add, angleOf, dist, normalize, perp, scale, sub } from "../kernel/vec";
 import { editPatch, replacePatch } from "../state/ops";
 import { applyMatch } from "../state/match";
 import { findSymbol, placeSymbolPatch } from "../state/symbols";
@@ -468,6 +470,53 @@ const TEXT: ToolDef = {
         return { label: "New Text", ops: [{ op: "add", entity: e, index: doc.entities.length }] };
       },
     },
+    {
+      id: "leader",
+      label: "Leader Callout",
+      points: "many",
+      min: 2,
+      prompts: ["Click the arrow tip", "Click elbow / landing point (Enter or right-click to finish)"],
+      preview: (pts) => (pts.length >= 2 ? { shapes: [{ kind: "polyline", points: pts, closed: false, style: { startEnding: "arrow" } }] } : {}),
+      edit: (pts, ctx) => {
+        if (pts.length < 2) return null;
+        const text = ctx.ask("Callout text", "");
+        if (!text) return null;
+        const s = ctx.settings;
+        const doc = ctx.doc();
+        const layer = doc.layers.find((l) => l.id === doc.activeLayerId);
+        const k = layer?.scale ?? 1;
+        const end = pts[pts.length - 1];
+        const prev = pts[pts.length - 2];
+        const right = end.x >= prev.x;
+        const gap = (right ? 1.5 : -1.5) * k;
+        const leader: Entity = {
+          id: ctx.newId(),
+          layerId: doc.activeLayerId,
+          kind: "polyline",
+          points: pts,
+          closed: false,
+          style: { ...(s.color ? { color: s.color } : {}), startEnding: "arrow" },
+        };
+        const label: Entity = {
+          id: ctx.newId(),
+          layerId: doc.activeLayerId,
+          kind: "text",
+          position: { x: end.x + gap, y: end.y - 0.3 * s.textHeight * k },
+          text,
+          height: s.textHeight,
+          rotation: 0,
+          align: right ? "left" : "right",
+          ...(s.color ? { style: { color: s.color } } : {}),
+        };
+        return {
+          label: "New Callout",
+          ops: [
+            { op: "add", entity: leader, index: doc.entities.length },
+            { op: "add", entity: label, index: doc.entities.length + 1 },
+          ],
+        };
+      },
+    },
   ],
 };
 
@@ -576,5 +625,89 @@ const MATCH: ToolDef = {
   ],
 };
 
-export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, CLEANUP, SYMBOL, TEXT, MATCH];
+const HATCH: ToolDef = {
+  id: "hatch",
+  label: "Boundary Hatch",
+  key: "z",
+  methods: [
+    {
+      id: "region",
+      label: "Pick Inside Region",
+      points: 1,
+      prompts: ["Click inside an enclosed boundary to hatch it"],
+      preview: ([p], ctx) => {
+        const ring = findEnclosedRegion(p, allVisible(ctx), ctx.index().ctx);
+        return ring ? { highlight: [{ kind: "polyline", points: ring, closed: true }] } : {};
+      },
+      edit: ([p], ctx) => {
+        const ring = findEnclosedRegion(p, allVisible(ctx), ctx.index().ctx);
+        if (!ring) return null;
+        const s = ctx.settings;
+        const doc = ctx.doc();
+        const fill = s.fill && s.fill !== "none" ? s.fill : "ansi31";
+        const entity: Entity = {
+          id: ctx.newId(),
+          layerId: doc.activeLayerId,
+          kind: "polyline",
+          points: ring,
+          closed: true,
+          style: {
+            penWeight: s.penWeight,
+            ...(s.color ? { color: s.color } : {}),
+            fill,
+          },
+        };
+        return { label: "Boundary Hatch", ops: [{ op: "add", entity, index: doc.entities.length }] };
+      },
+    },
+  ],
+};
+
+const MEASURE: ToolDef = {
+  id: "measure",
+  label: "Measure",
+  key: "j",
+  methods: [
+    {
+      id: "distance",
+      label: "Distance / Path",
+      points: "many",
+      min: 2,
+      prompts: ["Click start point", "Click next point (Enter or right-click for total)"],
+      preview: (pts) => (pts.length >= 2 ? { highlight: [{ kind: "polyline", points: pts, closed: false }] } : {}),
+      edit: (pts, ctx) => {
+        if (pts.length < 2) return null;
+        const u = ctx.doc().units;
+        const total = ringPerimeter(pts, false);
+        const direct = dist(pts[0], pts[pts.length - 1]);
+        const last = pts[pts.length - 1];
+        const prev = pts[pts.length - 2];
+        const ang = angleOf(sub(last, prev));
+        window.alert(
+          `Path length: ${formatLength(total, u)}\nDirect distance: ${formatLength(direct, u)}\nLast segment: ${formatLength(dist(prev, last), u)} at ${formatAngle(ang)}`,
+        );
+        return null;
+      },
+    },
+    {
+      id: "area",
+      label: "Area / Perimeter",
+      points: "many",
+      min: 3,
+      closes: true,
+      prompts: ["Click first corner", "Click next corner", "Click corners, then Enter or close to measure area"],
+      preview: (pts) => (pts.length >= 2 ? { highlight: [{ kind: "polyline", points: pts, closed: pts.length >= 3 }] } : {}),
+      edit: (pts, ctx) => {
+        if (pts.length < 3) return null;
+        const u = ctx.doc().units;
+        const area = Math.abs(ringArea(pts));
+        const perim = ringPerimeter(pts, true);
+        window.alert(`Area: ${formatArea(area, u)}\nPerimeter: ${formatLength(perim, u)}`);
+        return null;
+      },
+    },
+  ],
+};
+
+export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, CLEANUP, SYMBOL, TEXT, MATCH, HATCH, MEASURE];
 
