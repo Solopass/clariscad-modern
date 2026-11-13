@@ -9,6 +9,7 @@ import { AttributesPalette } from "./components/AttributesPalette";
 import { SymbolsPalette } from "./components/SymbolsPalette";
 import { CoordinatesHUD } from "./components/CoordinatesHUD";
 import { ShortcutBar } from "./components/ShortcutBar";
+import { ContextMenu } from "./components/ContextMenu";
 import { useAppLifecycle } from "./components/useAppLifecycle";
 
 export type PaletteId = "modifiers" | "layers" | "attributes" | "symbols";
@@ -85,6 +86,7 @@ export default function App() {
       </div>
       {keysOpen && <ShortcutBar onClose={() => setKeys(false)} />}
       <CoordinatesHUD keysOpen={keysOpen} onToggleKeys={() => setKeys(!keysOpen)} />
+      <ContextMenu />
     </div>
   );
 }

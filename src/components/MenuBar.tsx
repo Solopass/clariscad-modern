@@ -74,6 +74,7 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
       else if (id === "edit.info") info();
       else if (id === "layout.sheet") setSheetOpen(true);
       else if (id === "layout.title") setTitleOpen(true);
+      else if (id === "guide.open") setGuideTab(0);
       else if (id === "arrange.step")
         setDialog({
           title: "Step and Repeat",
@@ -175,7 +176,19 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
         { label: "Fit to Drawing", shortcut: sc("view.fit"), run: () => viewportRef.current?.zoomFit() },
         { label: "Fit Page", shortcut: sc("view.fitPage"), run: () => viewportRef.current?.fitSheet() },
         { label: "Zoom to Selection", shortcut: sc("view.zoomSelection"), disabled: !ds.selection.size, run: () => viewportRef.current?.zoomSelection() },
+        { label: "Zoom Window", shortcut: sc("view.zoomWindow"), run: () => viewportRef.current?.startZoomWindow() },
         { label: "Previous View", shortcut: sc("view.prev"), run: () => viewportRef.current?.previousView() },
+        "-",
+        {
+          label: "Save Current View…",
+          run: () => {
+            const v = viewportRef.current?.currentView();
+            if (!v) return;
+            const name = window.prompt("View name", `View ${(ds.doc.views?.length ?? 0) + 1}`);
+            if (name?.trim()) ds.saveView({ id: `v-${Date.now().toString(36)}`, name: name.trim(), ...v });
+          },
+        },
+        ...(ds.doc.views ?? []).map((v) => ({ label: `View: ${v.name}`, run: () => viewportRef.current?.restoreView(v) })),
         "-",
         { label: "Show Grid", shortcut: sc("view.grid"), checked: settings.gridVisible, run: () => setSetting("gridVisible", !settings.gridVisible) },
         { label: "Show Line Weights", shortcut: sc("view.weights"), checked: settings.showWeights, run: () => setSetting("showWeights", !settings.showWeights) },
@@ -318,7 +331,7 @@ export function MenuBar({ palettes, setPalette, keysOpen }: { palettes: PaletteS
     {
       title: "Guide",
       items: [
-        { label: "Complete User Guide…", run: () => setGuideTab(0) },
+        { label: "Complete User Guide…", shortcut: sc("guide.open"), run: () => setGuideTab(0) },
         "-",
         ...GUIDE_SECTIONS.map((s, idx) => ({ label: `${idx + 1}. ${s.title}`, run: () => setGuideTab(idx) })),
       ],

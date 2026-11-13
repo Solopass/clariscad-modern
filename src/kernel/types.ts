@@ -293,6 +293,14 @@ export interface TitleBlock {
 }
 
 /** A whole drawing, as saved in .tcad. */
+export interface SavedView {
+  id: Id;
+  name: string;
+  cx: number;
+  cy: number;
+  zoom: number;
+}
+
 export interface CadDocument {
   /** File-format version; bump on breaking schema changes and add a migration. */
   version: number;
@@ -307,6 +315,8 @@ export interface CadDocument {
   sheet?: Sheet;
   /** Title, drawn by, date, scale and sheet number, drawn on every page. */
   titleBlock?: TitleBlock;
+  /** Named camera views saved with the drawing. */
+  views?: SavedView[];
 }
 
 export const DOCUMENT_VERSION = 1;

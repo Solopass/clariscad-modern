@@ -28,6 +28,8 @@ export interface ToolContext {
   newId(): string;
   /** Ask the user for a line of text (null = cancelled). */
   ask?(question: string, initial: string): string | null;
+  /** Open an inline text editor at world position `pos` and call `onCommit` with the text. */
+  openText?(pos: Vec2, initial: string, onCommit: (text: string) => void): void;
 }
 
 export interface PointerInfo {
@@ -123,6 +125,7 @@ export class DrawTool implements Tool {
       index: () => this.ctx.index(),
       newId: () => this.ctx.newId(),
       ask: (q, init) => (this.ctx.ask ? this.ctx.ask(q, init) : null),
+      openText: this.ctx.openText,
       tolerance: tol,
       entityAt,
       primAt: (p: Vec2): Prim | null => {

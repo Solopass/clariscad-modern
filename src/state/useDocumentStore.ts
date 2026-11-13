@@ -2,7 +2,7 @@
 // mutable object kept outside reactive state; `version` bumps on every
 // change so views know to redraw.
 import { create } from "zustand";
-import { DEFAULT_SHEET, DOCUMENT_VERSION, type CadDocument, type DraftingStandard, type Id, type Layer, type UnitSystem } from "../kernel/types";
+import { DEFAULT_SHEET, DOCUMENT_VERSION, type CadDocument, type DraftingStandard, type Id, type Layer, type SavedView, type UnitSystem } from "../kernel/types";
 import { normalizeSheet } from "./sheetModel";
 import { EntityIndex } from "../kernel/spatialIndex";
 import { type Patch, applyOps, invert, syncContext } from "./ops";
@@ -70,6 +70,8 @@ export interface DocumentState {
   setUnits(u: UnitSystem): void;
   /** Drafting standard for dimensions (undoable). */
   setStandard(s: DraftingStandard): void;
+  saveView(v: SavedView): void;
+  deleteView(id: Id): void;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => {
@@ -163,6 +165,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     setStandard(standard) {
       const d = get().doc;
       if (d.standard !== standard) get().commit({ label: "Change Standard", ops: [{ op: "docProps", before: { standard: d.standard }, after: { standard } }] });
+    },
+
+    saveView(v) {
+      const d = get().doc;
+      const prev = d.views ?? [];
+      const next = [...prev.filter((x) => x.name !== v.name), v];
+      get().commit({ label: "Save View", ops: [{ op: "docProps", before: { views: prev }, after: { views: next } }] });
+    },
+
+    deleteView(id) {
+      const d = get().doc;
+      const prev = d.views ?? [];
+      const next = prev.filter((x) => x.id !== id);
+      if (next.length !== prev.length) get().commit({ label: "Delete View", ops: [{ op: "docProps", before: { views: prev }, after: { views: next } }] });
     },
   };
 });

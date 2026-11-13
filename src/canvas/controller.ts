@@ -125,7 +125,21 @@ export class ViewportController {
       tolerance: () => PICK_PX / this.cam.zoom,
       newId: () => newId(),
       ask: (q, init) => window.prompt(q, init),
+      openText: (pos, initial, onCommit) => this.openTextEditor(pos, initial, onCommit),
     };
+  }
+
+  private openTextEditor(worldPos: Vec2, initial: string, onCommit: (text: string) => void) {
+    const s = worldToScreen(this.cam, worldPos);
+    const ts = useToolStore.getState().settings;
+    const ds = useDocumentStore.getState().doc;
+    const layer = ds.layers.find((l) => l.id === ds.activeLayerId);
+    const fontSizePx = Math.max(11, Math.min(48, ts.textHeight * (layer?.scale ?? 1) * this.cam.zoom));
+    window.dispatchEvent(
+      new CustomEvent("temaricad:text-edit", {
+        detail: { x: s.x, y: s.y, initial, fontSizePx, onCommit },
+      }),
+    );
   }
 
   private makeTool(): Tool {
@@ -196,6 +210,25 @@ export class ViewportController {
     this.mark("grid", "static", "overlay");
   }
 
+  private zoomWin: { start?: Vec2; cur?: Vec2 } | null = null;
+
+  startZoomWindow() {
+    this.zoomWin = {};
+    this.over.style.cursor = "crosshair";
+    this.mark("overlay");
+  }
+
+  currentView() {
+    return { cx: this.cam.cx, cy: this.cam.cy, zoom: this.cam.zoom };
+  }
+
+  restoreView(v: { cx: number; cy: number; zoom: number }) {
+    this.pushView();
+    this.cam = { ...this.cam, cx: v.cx, cy: v.cy, zoom: v.zoom };
+    this.publishView();
+    this.mark("grid", "static", "overlay");
+  }
+
   /** Frame the sheet (every page), the way a new Claris drawing opens on the page. */
   fitSheet() {
     const b = sheetBounds(useDocumentStore.getState().doc);
@@ -222,6 +255,11 @@ export class ViewportController {
   private info(ev: { clientX: number; clientY: number; shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) {
     const r = this.over.getBoundingClientRect();
     this.pointer = { screen: { x: ev.clientX - r.left, y: ev.clientY - r.top }, shift: ev.shiftKey, alt: ev.altKey, ctrl: ev.ctrlKey || ev.metaKey };
+    if (this.zoomWin?.start) {
+      this.zoomWin.cur = screenToWorld(this.cam, this.pointer.screen);
+      this.mark("overlay");
+      return;
+    }
     return this.computeInfo();
   }
 
@@ -289,6 +327,11 @@ export class ViewportController {
     if (ev.button !== 0) return;
     const info = this.info(ev);
     if (!info) return;
+    if (this.zoomWin) {
+      this.zoomWin = { start: info.raw, cur: info.raw };
+      this.mark("overlay");
+      return;
+    }
     this.tool.down(info);
     if (this.tool.from()) this.anchors = [this.tool.from()!, ...this.anchors.filter((a) => dist(a, this.tool.from()!) > 1e-9)].slice(0, 6);
     this.mark("overlay");
@@ -304,6 +347,11 @@ export class ViewportController {
     }
     const r = this.over.getBoundingClientRect();
     this.pointer = { screen: { x: ev.clientX - r.left, y: ev.clientY - r.top }, shift: ev.shiftKey, alt: ev.altKey, ctrl: ev.ctrlKey || ev.metaKey };
+    if (this.zoomWin?.start) {
+      this.zoomWin.cur = screenToWorld(this.cam, this.pointer.screen);
+      this.mark("overlay");
+      return;
+    }
     // Freehand needs every sample; everything else snaps once per frame.
     const coalesced = typeof ev.getCoalescedEvents === "function" ? ev.getCoalescedEvents() : [];
     if (coalesced.length > 1 && this.tool.busy()) {
@@ -322,6 +370,22 @@ export class ViewportController {
     }
     if (ev.button !== 0) return;
     const info = this.info(ev);
+    if (this.zoomWin) {
+      if (this.zoomWin.start && info) {
+        const a = this.zoomWin.start;
+        const b = info.raw;
+        if (Math.abs(a.x - b.x) > 1e-3 && Math.abs(a.y - b.y) > 1e-3) {
+          this.pushView();
+          this.cam = fitBox(this.cam, { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) }, 16);
+          this.publishView();
+          this.mark("grid", "static", "overlay");
+        }
+      }
+      this.zoomWin = null;
+      this.over.style.cursor = "";
+      this.mark("overlay");
+      return;
+    }
     if (info) {
       // Deliver the final position before the release (moves are otherwise once per frame).
       if (this.tool.busy()) this.tool.move(info);
@@ -346,8 +410,9 @@ export class ViewportController {
       const ds = useDocumentStore.getState();
       const hit = ds.index.nearest(info.raw, PICK_PX / this.cam.zoom)[0]?.entity;
       if (hit?.kind === "text") {
-        const text = window.prompt("Text", hit.text);
-        if (text && text !== hit.text) ds.commit({ label: "Edit Text", ops: [{ op: "replace", before: hit, after: { ...hit, text } }] });
+        this.openTextEditor(hit.position, hit.text, (text) => {
+          if (text !== hit.text) ds.commit({ label: "Edit Text", ops: [{ op: "replace", before: hit, after: { ...hit, text } }] });
+        });
         return;
       }
       if (hit?.kind === "dimension") {
@@ -366,9 +431,24 @@ export class ViewportController {
 
   private onContext = (ev: MouseEvent) => {
     ev.preventDefault();
-    // Right-click finishes a multi-point command, like Enter.
-    this.tool.key("Enter", { shift: false, ctrl: false });
-    this.mark("overlay");
+    if (this.zoomWin) {
+      this.zoomWin = null;
+      this.over.style.cursor = "";
+      this.mark("overlay");
+      return;
+    }
+    // Right-click finishes a multi-point command, like Enter; when idle, open context menu.
+    if (this.tool.key("Enter", { shift: false, ctrl: false })) {
+      this.mark("overlay");
+      return;
+    }
+    const info = this.info(ev);
+    if (info) {
+      const ds = useDocumentStore.getState();
+      const hit = ds.index.nearest(info.raw, PICK_PX / this.cam.zoom)[0]?.entity;
+      if (hit && !ds.selection.has(hit.id)) ds.setSelection([hit.id]);
+    }
+    window.dispatchEvent(new CustomEvent("temaricad:contextmenu", { detail: { x: ev.clientX, y: ev.clientY } }));
   };
 
   private onWheel = (ev: WheelEvent) => {
@@ -400,6 +480,7 @@ export class ViewportController {
       zoomBy: (f: number) => this.zoomBy(f),
       zoomFit: () => this.zoomFit(),
       zoomSelection: () => this.zoomSelection(),
+      zoomWindow: () => this.startZoomWindow(),
       previousView: () => this.previousView(),
       fitSheet: () => this.fitSheet(),
       cancelTool: () => this.tool.cancel(),
@@ -543,6 +624,15 @@ export class ViewportController {
       ctx.moveTo(q.x + 3, q.y - 3);
       ctx.lineTo(q.x - 3, q.y + 3);
       ctx.stroke();
+    }
+    if (this.zoomWin?.start && this.zoomWin.cur) {
+      const a = worldToScreen(this.cam, this.zoomWin.start);
+      const b = worldToScreen(this.cam, this.zoomWin.cur);
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 2]);
+      ctx.strokeRect(Math.round(Math.min(a.x, b.x)) + 0.5, Math.round(Math.min(a.y, b.y)) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      ctx.setLineDash([]);
     }
     if (ov.marquee) {
       const a = worldToScreen(this.cam, ov.marquee.a);

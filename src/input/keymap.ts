@@ -57,6 +57,7 @@ const COMMANDS: Shortcut[] = [
   { id: "view.fit", label: "Fit to Drawing", section: "View", chord: { key: "f" }, remap: "Ctrl/⌘0 resets the browser’s own zoom and cannot be overridden, so Fit is the F key." },
   { id: "view.fitPage", label: "Fit Page", section: "View", chord: { key: "f", shift: true } },
   { id: "view.zoomSelection", label: "Zoom to Selection", section: "View", chord: { key: "f", alt: true } },
+  { id: "view.zoomWindow", label: "Zoom Window", section: "View", chord: { key: "z", alt: true } },
   { id: "view.prev", label: "Previous View", section: "View", chord: { key: "ArrowLeft", alt: true } },
   { id: "view.grid", label: "Show Grid", section: "View", chord: { key: "g", alt: true }, remap: "Ctrl/⌘R reloads the page, so the grid toggle is Alt+G." },
   { id: "view.weights", label: "Line Weights", section: "View", chord: { key: "w", alt: true } },
@@ -94,6 +95,7 @@ const COMMANDS: Shortcut[] = [
   { id: "window.layers", label: "Layers", section: "Window", chord: { key: "2", alt: true } },
   { id: "window.attributes", label: "Attributes", section: "Window", chord: { key: "3", alt: true } },
   { id: "window.symbols", label: "Symbols", section: "Window", chord: { key: "4", alt: true } },
+  { id: "guide.open", label: "User Guide", section: "Window", chord: { key: "F1" } },
 
   { id: "draw.nudgeLeft", label: "Nudge left", section: "Drawing", chord: { key: "ArrowLeft" }, hint: true },
   { id: "draw.nudgeRight", label: "Nudge right", section: "Drawing", chord: { key: "ArrowRight" }, hint: true },

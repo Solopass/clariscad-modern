@@ -21,33 +21,52 @@ export function parseGuideSections(md: string): GuideSection[] {
 
 export const GUIDE_SECTIONS: GuideSection[] = parseGuideSections(guideMd);
 
-function renderInline(text: string): ReactNode[] {
+function highlightText(text: string, q: string, keyPrefix: string): ReactNode {
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  const out: ReactNode[] = [];
+  let idx = 0;
+  let pos = 0;
+  while ((pos = lower.indexOf(q, idx)) !== -1) {
+    if (pos > idx) out.push(text.slice(idx, pos));
+    out.push(
+      <mark key={`${keyPrefix}-${pos}`} className="bg-[#ffe866] px-[1px] text-black">
+        {text.slice(pos, pos + q.length)}
+      </mark>,
+    );
+    idx = pos + q.length;
+  }
+  if (idx < text.length) out.push(text.slice(idx));
+  return out.length ? out : text;
+}
+
+function renderInline(text: string, q = ""): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let k = 0;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) out.push(highlightText(text.slice(last, m.index), q, `t${k++}`));
     const tok = m[0];
     if (tok.startsWith("`")) {
       out.push(
         <code key={k++} className="rounded-[2px] border border-black/40 bg-[#f3f3f3] px-1 py-[0.5px] font-mono text-[10.5px]">
-          {tok.slice(1, -1)}
+          {highlightText(tok.slice(1, -1), q, `c${k}`)}
         </code>,
       );
     } else if (tok.startsWith("**")) {
-      out.push(<strong key={k++}>{renderInline(tok.slice(2, -2))}</strong>);
+      out.push(<strong key={k++}>{renderInline(tok.slice(2, -2), q)}</strong>);
     } else {
-      out.push(<em key={k++}>{renderInline(tok.slice(1, -1))}</em>);
+      out.push(<em key={k++}>{renderInline(tok.slice(1, -1), q)}</em>);
     }
     last = re.lastIndex;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(highlightText(text.slice(last), q, `e${k++}`));
   return out;
 }
 
-function MarkdownView({ body }: { body: string }) {
+function MarkdownView({ body, query }: { body: string; query: string }) {
   const lines = body.split(/\r?\n/);
   const nodes: ReactNode[] = [];
   let i = 0;
@@ -59,10 +78,15 @@ function MarkdownView({ body }: { body: string }) {
       i++;
       continue;
     }
+    if (/^---+$/.test(line.trim())) {
+      nodes.push(<hr key={k++} className="my-3 border-t border-black/30" />);
+      i++;
+      continue;
+    }
     if (line.startsWith("### ")) {
       nodes.push(
         <h3 key={k++} className="mt-3 mb-1 border-b border-dotted border-black/40 pb-0.5 text-[12px] font-bold">
-          {renderInline(line.slice(4))}
+          {renderInline(line.slice(4), query)}
         </h3>,
       );
       i++;
@@ -76,7 +100,7 @@ function MarkdownView({ body }: { body: string }) {
       }
       nodes.push(
         <div key={k++} className="my-2 border-l-2 border-black bg-[#f6f6f6] px-2.5 py-1.5 text-[11px]">
-          {renderInline(quote.join(" "))}
+          {renderInline(quote.join(" "), query)}
         </div>,
       );
       continue;
@@ -99,7 +123,7 @@ function MarkdownView({ body }: { body: string }) {
             <tr className="bg-[#eee]">
               {header.map((h, ci) => (
                 <th key={ci} className="border border-black px-2 py-1 text-left font-bold">
-                  {renderInline(h)}
+                  {renderInline(h, query)}
                 </th>
               ))}
             </tr>
@@ -109,7 +133,7 @@ function MarkdownView({ body }: { body: string }) {
               <tr key={ri} className={ri % 2 ? "bg-[#fafafa]" : "bg-white"}>
                 {r.map((c, ci) => (
                   <td key={ci} className="border border-black px-2 py-1 align-top">
-                    {renderInline(c)}
+                    {renderInline(c, query)}
                   </td>
                 ))}
               </tr>
@@ -130,20 +154,20 @@ function MarkdownView({ body }: { body: string }) {
       nodes.push(
         <Tag key={k++} className={`my-1.5 space-y-1 pl-5 text-[11.5px] leading-[1.45] ${ordered ? "list-decimal" : "list-disc"}`}>
           {items.map((it, idx) => (
-            <li key={idx}>{renderInline(it)}</li>
+            <li key={idx}>{renderInline(it, query)}</li>
           ))}
         </Tag>,
       );
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() && !lines[i].startsWith("#") && !lines[i].startsWith("- ") && !lines[i].startsWith("|") && !lines[i].startsWith("> ") && !/^\d+\.\s/.test(lines[i])) {
+    while (i < lines.length && lines[i].trim() && !/^---+$/.test(lines[i].trim()) && !lines[i].startsWith("#") && !lines[i].startsWith("- ") && !lines[i].startsWith("|") && !lines[i].startsWith("> ") && !/^\d+\.\s/.test(lines[i])) {
       para.push(lines[i]);
       i++;
     }
     nodes.push(
       <p key={k++} className="my-1.5 text-[11.5px] leading-[1.5]">
-        {renderInline(para.join(" "))}
+        {renderInline(para.join(" "), query)}
       </p>,
     );
   }
@@ -233,7 +257,7 @@ export function GuideDialog({ initialTab = 0, onClose }: { initialTab?: number; 
 
           <div className="min-w-0 flex-1 overflow-y-auto px-5 py-3">
             <h2 className="mb-2 border-b-2 border-black pb-1 text-[15px] font-bold">{active.title}</h2>
-            <MarkdownView body={active.body} />
+            <MarkdownView body={active.body} query={q} />
           </div>
         </div>
 

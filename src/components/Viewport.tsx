@@ -3,6 +3,7 @@ import { ViewportController, viewportRef } from "../canvas/controller";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
 import { Ruler, RulerCorner } from "./Rulers";
+import { InlineTextOverlay } from "./InlineTextOverlay";
 
 export function Viewport() {
   const host = useRef<HTMLDivElement>(null);
@@ -33,6 +34,7 @@ export function Viewport() {
           <canvas ref={grid} />
           <canvas ref={stat} />
           <canvas ref={over} className="overlay" />
+          <InlineTextOverlay />
         </div>
       </div>
     </div>

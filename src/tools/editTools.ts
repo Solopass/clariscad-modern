@@ -452,22 +452,28 @@ const TEXT: ToolDef = {
         shapes: [{ kind: "text", position: p, text: "Text", height: ctx.settings.textHeight, rotation: (ctx.settings.textRotation * Math.PI) / 180, align: ctx.settings.textAlign }],
       }),
       edit: ([p], ctx) => {
-        const text = ctx.ask("Text", "");
-        if (!text) return null;
         const s = ctx.settings;
-        const doc = ctx.doc();
-        const e: Entity = {
-          id: ctx.newId(),
-          layerId: doc.activeLayerId,
-          kind: "text",
-          position: p,
-          text,
-          height: s.textHeight,
-          rotation: (s.textRotation * Math.PI) / 180,
-          align: s.textAlign,
-          ...(s.color ? { style: { color: s.color } } : {}),
+        const makePatch = (text: string) => {
+          const doc = useDocumentStore.getState().doc;
+          const e: Entity = {
+            id: ctx.newId(),
+            layerId: doc.activeLayerId,
+            kind: "text",
+            position: p,
+            text,
+            height: s.textHeight,
+            rotation: (s.textRotation * Math.PI) / 180,
+            align: s.textAlign,
+            ...(s.color ? { style: { color: s.color } } : {}),
+          };
+          return { label: "New Text", ops: [{ op: "add" as const, entity: e, index: doc.entities.length }] };
         };
-        return { label: "New Text", ops: [{ op: "add", entity: e, index: doc.entities.length }] };
+        if (ctx.openText) {
+          ctx.openText(p, "", (text) => useDocumentStore.getState().commit(makePatch(text)));
+          return null;
+        }
+        const text = ctx.ask("Text", "");
+        return text ? makePatch(text) : null;
       },
     },
     {
@@ -479,42 +485,50 @@ const TEXT: ToolDef = {
       preview: (pts) => (pts.length >= 2 ? { shapes: [{ kind: "polyline", points: pts, closed: false, style: { startEnding: "arrow" } }] } : {}),
       edit: (pts, ctx) => {
         if (pts.length < 2) return null;
-        const text = ctx.ask("Callout text", "");
-        if (!text) return null;
         const s = ctx.settings;
-        const doc = ctx.doc();
-        const layer = doc.layers.find((l) => l.id === doc.activeLayerId);
+        const doc0 = ctx.doc();
+        const layer = doc0.layers.find((l) => l.id === doc0.activeLayerId);
         const k = layer?.scale ?? 1;
         const end = pts[pts.length - 1];
         const prev = pts[pts.length - 2];
         const right = end.x >= prev.x;
         const gap = (right ? 1.5 : -1.5) * k;
-        const leader: Entity = {
-          id: ctx.newId(),
-          layerId: doc.activeLayerId,
-          kind: "polyline",
-          points: pts,
-          closed: false,
-          style: { ...(s.color ? { color: s.color } : {}), startEnding: "arrow" },
+        const textPos = { x: end.x + gap, y: end.y - 0.3 * s.textHeight * k };
+        const makePatch = (text: string) => {
+          const doc = useDocumentStore.getState().doc;
+          const leader: Entity = {
+            id: ctx.newId(),
+            layerId: doc.activeLayerId,
+            kind: "polyline",
+            points: pts,
+            closed: false,
+            style: { ...(s.color ? { color: s.color } : {}), startEnding: "arrow" },
+          };
+          const label: Entity = {
+            id: ctx.newId(),
+            layerId: doc.activeLayerId,
+            kind: "text",
+            position: textPos,
+            text,
+            height: s.textHeight,
+            rotation: 0,
+            align: right ? "left" : "right",
+            ...(s.color ? { style: { color: s.color } } : {}),
+          };
+          return {
+            label: "New Callout",
+            ops: [
+              { op: "add" as const, entity: leader, index: doc.entities.length },
+              { op: "add" as const, entity: label, index: doc.entities.length + 1 },
+            ],
+          };
         };
-        const label: Entity = {
-          id: ctx.newId(),
-          layerId: doc.activeLayerId,
-          kind: "text",
-          position: { x: end.x + gap, y: end.y - 0.3 * s.textHeight * k },
-          text,
-          height: s.textHeight,
-          rotation: 0,
-          align: right ? "left" : "right",
-          ...(s.color ? { style: { color: s.color } } : {}),
-        };
-        return {
-          label: "New Callout",
-          ops: [
-            { op: "add", entity: leader, index: doc.entities.length },
-            { op: "add", entity: label, index: doc.entities.length + 1 },
-          ],
-        };
+        if (ctx.openText) {
+          ctx.openText(textPos, "", (text) => useDocumentStore.getState().commit(makePatch(text)));
+          return null;
+        }
+        const text = ctx.ask("Callout text", "");
+        return text ? makePatch(text) : null;
       },
     },
   ],

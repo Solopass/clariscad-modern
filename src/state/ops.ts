@@ -2,7 +2,7 @@
 // typed ops. applyOps() is the only function that changes a document; it
 // updates the CadDocument (immutably) and the EntityIndex together, and is
 // used for commit, undo, redo and file load alike.
-import type { CadDocument, DraftingStandard, Entity, Id, Layer, Sheet, SymbolDef, TitleBlock, UnitSystem, WallEntity } from "../kernel/types";
+import type { CadDocument, DraftingStandard, Entity, Id, Layer, SavedView, Sheet, SymbolDef, TitleBlock, UnitSystem, WallEntity } from "../kernel/types";
 import type { EntityIndex } from "../kernel/spatialIndex";
 import type { WallSolveEntry } from "../kernel/prims";
 import { type Transform2D, invert as invertT } from "../kernel/transform";
@@ -35,6 +35,7 @@ export interface DocProps {
   standard?: DraftingStandard;
   sheet?: Sheet;
   titleBlock?: TitleBlock;
+  views?: SavedView[];
 }
 
 export interface Patch {

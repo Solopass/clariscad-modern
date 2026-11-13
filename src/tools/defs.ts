@@ -39,6 +39,8 @@ export interface BuildCtx {
   newId(): Id;
   /** Ask the user for a line of text (null = cancelled). */
   ask(question: string, initial: string): string | null;
+  /** Open an inline text editor at world position `pos` and call `onCommit` with the text. */
+  openText?(pos: Vec2, initial: string, onCommit: (text: string) => void): void;
   /** Pick radius in world units. */
   tolerance: number;
 }

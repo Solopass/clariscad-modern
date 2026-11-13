@@ -17,6 +17,7 @@ export interface CommandHost {
   zoomBy(factor: number): void;
   zoomFit(): void;
   zoomSelection?(): void;
+  zoomWindow?(): void;
   previousView?(): void;
   fitSheet(): void;
   cancelTool(): void;
@@ -71,6 +72,7 @@ export function runCommand(id: string, host: CommandHost): boolean {
     case "window.layers":
     case "window.attributes":
     case "window.symbols":
+    case "guide.open":
       emit(id);
       return true;
     case "edit.undo":
@@ -115,6 +117,9 @@ export function runCommand(id: string, host: CommandHost): boolean {
       return true;
     case "view.zoomSelection":
       host.zoomSelection?.();
+      return true;
+    case "view.zoomWindow":
+      host.zoomWindow?.();
       return true;
     case "view.prev":
       host.previousView?.();

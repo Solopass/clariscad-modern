@@ -163,3 +163,28 @@ Select two or more closed shapes (rectangles, circles, polygons, ellipses, or cl
 2. **Double-click to edit**: Double-click **Text** to edit words, **Dimensions** to override text, or **Symbols** to edit the definition in place.
 3. **Crossing vs. Window Select**: Dragging Left→Right selects only objects **completely inside** the box; dragging Right→Left selects anything **crossed** by the box.
 4. **Use Graphic Guides (`U`) + `Z` Boundary Hatch**: Lay out construction grids with Guides, draw walls/lines, then click inside rooms with `Z` to hatch floor areas in one click.
+
+---
+
+## Quick Tutorials
+
+### Tutorial 1: Architectural Room with Door & Hatched Floor
+1. **Set Units**: Open `Layout ▸ Architectural (1'-2 1/2")`.
+2. **Draw Smart Walls**: Press `W`, set **Thickness** to `6"` in the Methods bar, and click out a 16' × 12' room (press `Tab` after each click to type `16'` or `12'`, and press `C` on the last corner to close the loop).
+3. **Insert a Door**: Open `Window ▸ Symbols` (`Alt+4`), click **Door (Single)**, and click on a wall. The wall automatically breaks open and draws the door swing.
+4. **Adjust the Door**: Press `V`, click the wall, and drag the **centre** grip to slide the door or press `Alt+Shift+S` to flip the swing.
+5. **Hatch the Floor**: Select a pattern in `Attributes` (e.g. `ANSI31` or `Wood`), press `Z` (**Boundary Hatch**), and click inside the room.
+6. **Dimension & Plot**: Press `M` (**Dimension**) to dimension the walls, then press `Ctrl+P` to preview and export a vector PDF.
+
+### Tutorial 2: Precision Mechanical Bracket
+1. **Switch to Metric**: Choose `Layout ▸ Millimeters`.
+2. **Base & Boss**: Press `R` (**Rectangle**) and draw a `120 mm × 60 mm` plate. Press `C` (**Circle**) and draw a `30 mm` radius circle overlapping one end.
+3. **Merge with Booleans**: Press `V`, select both shapes, and choose `Arrange ▸ Union` to fuse them into one clean outline.
+4. **Add Bolt Holes**: Draw two `8 mm` radius circles inside the plate, select the plate first and then the holes (`Shift+Click`), and run `Arrange ▸ Subtract (First − Rest)`.
+5. **Round Corners**: Press `I` (**Fillet**), set Radius to `6 mm` in the Methods bar, and click adjacent edges.
+6. **Check Area**: Press `Ctrl+I` (**Get Info**) to inspect exact area and perimeter.
+
+### Tutorial 3: Multi-line Notes & Callouts
+1. **Leader Callout**: Press `Q` twice to switch to **Leader Callout**. Click the arrow tip on a part, click the shoulder point, press `Enter`, and type your note.
+2. **Multi-line Text**: Press `Q` (**Click to Type**), click on the drawing, type your first line, press `Shift+Enter` for a new line, and press `Enter` to finish.
+
