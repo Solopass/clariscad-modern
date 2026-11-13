@@ -107,6 +107,22 @@ export function MethodsBar() {
             onChange={(v) => set("trimMode", v as "both" | "first" | "none")}
           />
         )}
+        {tool === "text" && (
+          <>
+            <LengthField label="Height (paper)" width={60} value={settings.textHeight} min={0.1} onChange={(v) => set("textHeight", v)} />
+            <Choice
+              label="Align"
+              value={settings.textAlign}
+              options={[
+                ["left", "Left"],
+                ["center", "Center"],
+                ["right", "Right"],
+              ]}
+              onChange={(v) => set("textAlign", v as "left" | "center" | "right")}
+            />
+            <LengthField label="Angle" kind="angle" width={60} value={settings.textRotation} onChange={(v) => set("textRotation", v)} />
+          </>
+        )}
         {tool === "symbol" && (
           <>
             <Choice

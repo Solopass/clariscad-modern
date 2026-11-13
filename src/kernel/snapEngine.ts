@@ -180,7 +180,7 @@ function entityCandidates(e: Entity, m: Modifiers, out: Candidate[]): void {
       out.push({ point: c, kind: "center", ids: [e.id] });
     }
   }
-  if (m.insertion && e.kind === "symbol") out.push({ point: e.position, kind: "insertion", ids: [e.id] });
+  if (m.insertion && (e.kind === "symbol" || e.kind === "text")) out.push({ point: e.position, kind: "insertion", ids: [e.id] });
 }
 
 export function gridPoint(p: Vec2, spacing: number, origin: Vec2 = { x: 0, y: 0 }): Vec2 {

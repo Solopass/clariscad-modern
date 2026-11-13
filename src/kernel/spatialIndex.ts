@@ -2,7 +2,7 @@
 // Guides) live in a side list and are returned by every query.
 import RBush from "rbush";
 import type { BBox, Entity, Id } from "./types";
-import { type PrimContext, bandOffsets, closestOnPrim, entityBBox, isUnbounded, primsOf } from "./prims";
+import { type PrimContext, bandOffsets, closestOnPrim, entityBBox, isUnbounded, primsOf, textCorners } from "./prims";
 import type { Vec2 } from "./vec";
 
 interface Item extends BBox {
@@ -139,6 +139,15 @@ export class EntityIndex {
 
   /** Exact distance from a point to an entity's geometry. */
   distanceTo(e: Entity, p: Vec2): number {
+    if (e.kind === "text") {
+      // Inside the text box counts as a hit; otherwise distance to its edges.
+      const c = textCorners(e, this.ctx);
+      let inside = false;
+      for (let i = 0, j = 3; i < 4; j = i++)
+        if (c[i].y > p.y !== c[j].y > p.y && p.x < ((c[j].x - c[i].x) * (p.y - c[i].y)) / (c[j].y - c[i].y) + c[i].x) inside = !inside;
+      if (inside) return 0;
+      return Math.min(...c.map((a, i) => closestOnPrim({ t: "seg", a, b: c[(i + 1) % 4] }, p).distance));
+    }
     if (e.kind === "wall") {
       const len = Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
       if (len > 0) {

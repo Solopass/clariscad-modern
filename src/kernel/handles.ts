@@ -52,6 +52,8 @@ export function handlesOf(e: Entity): Handle[] {
       return [{ name: "insert", p: e.position }];
     case "dimension":
       return [{ name: "line", p: e.linePoint }];
+    case "text":
+      return [{ name: "insert", p: e.position }];
   }
 }
 
@@ -166,5 +168,7 @@ export function moveHandle(e: Entity, name: string, p: Vec2): Entity {
       return name === "insert" ? { ...e, position: p } : e;
     case "dimension":
       return name === "line" ? { ...e, linePoint: p } : e;
+    case "text":
+      return name === "insert" ? { ...e, position: p } : e;
   }
 }

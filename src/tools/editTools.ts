@@ -434,5 +434,40 @@ const SYMBOL: ToolDef = {
   ],
 };
 
-export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, SYMBOL];
+const TEXT: ToolDef = {
+  id: "text",
+  label: "Text",
+  key: "q",
+  methods: [
+    {
+      id: "place",
+      label: "Click to Type",
+      points: 1,
+      prompts: ["Click where the text starts (height, alignment and angle in the Methods bar)"],
+      preview: ([p], ctx) => ({
+        shapes: [{ kind: "text", position: p, text: "Text", height: ctx.settings.textHeight, rotation: (ctx.settings.textRotation * Math.PI) / 180, align: ctx.settings.textAlign }],
+      }),
+      edit: ([p], ctx) => {
+        const text = ctx.ask("Text", "");
+        if (!text) return null;
+        const s = ctx.settings;
+        const doc = ctx.doc();
+        const e: Entity = {
+          id: ctx.newId(),
+          layerId: doc.activeLayerId,
+          kind: "text",
+          position: p,
+          text,
+          height: s.textHeight,
+          rotation: (s.textRotation * Math.PI) / 180,
+          align: s.textAlign,
+          ...(s.color ? { style: { color: s.color } } : {}),
+        };
+        return { label: "New Text", ops: [{ op: "add", entity: e, index: doc.entities.length }] };
+      },
+    },
+  ],
+};
+
+export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, SYMBOL, TEXT];
 

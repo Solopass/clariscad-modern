@@ -26,6 +26,7 @@ export function translateEntity(e: Entity, d: Vec2): Entity {
     case "dimension":
       return { ...e, points: e.points.map((p) => mv(p, d)), linePoint: mv(e.linePoint, d) };
     case "symbol":
+    case "text":
       return { ...e, position: mv(e.position, d) };
   }
 }
@@ -97,6 +98,13 @@ export function transformEntity(e: Entity, T: Transform2D): Entity {
       return { ...e, point: m(e.point), dir: normalize(applyDir(T, e.dir)) };
     case "dimension":
       return { ...e, points: e.points.map(m), linePoint: m(e.linePoint) };
+    case "text": {
+      // Text stays readable under a mirror: only its anchor and baseline direction move,
+      // and it is turned the right way up (swapping left/right so it covers the same span).
+      const r = normAngle(mapAngle(T, e.rotation));
+      const up = mirror ? uprightText(r, e.align) : { rotation: r, align: e.align };
+      return { ...e, position: m(e.position), rotation: up.rotation, align: up.align, height: e.height * s };
+    }
     case "symbol":
       return {
         ...e,
@@ -109,6 +117,16 @@ export function transformEntity(e: Entity, T: Transform2D): Entity {
 }
 
 const flipJustify = (j: "center" | "left" | "right") => (j === "left" ? "right" : j === "right" ? "left" : j);
+
+/**
+ * Text whose baseline points "backwards" (between 90° and 270°) after a mirror is
+ * turned 180°; its alignment flips so it still covers the same span.
+ */
+export function uprightText(rotation: number, align: "left" | "center" | "right"): { rotation: number; align: "left" | "center" | "right" } {
+  const a = normAngle(rotation);
+  if (a > Math.PI / 2 + 1e-9 && a <= (3 * Math.PI) / 2 + 1e-9) return { rotation: normAngle(a - Math.PI), align: flipJustify(align) };
+  return { rotation: a, align };
+}
 
 /** Rotation by `ang` about `c`. */
 export const rotateAbout = (c: Vec2, ang: number): Transform2D => multiply(translation(c.x, c.y), multiply(rotation(ang), translation(-c.x, -c.y)));

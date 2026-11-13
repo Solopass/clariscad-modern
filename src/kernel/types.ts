@@ -184,7 +184,19 @@ export interface SymbolInstanceEntity extends EntityBase {
   scaleY: number;
 }
 
+/** A line of text. `height` is the em size in paper mm (× layer scale in the model). */
+export interface TextEntity extends EntityBase {
+  kind: "text";
+  /** Baseline anchor point. */
+  position: Vec2;
+  text: string;
+  height: number;
+  rotation: number;
+  align: "left" | "center" | "right";
+}
+
 export type Entity =
+  | TextEntity
   | LineEntity
   | PolylineEntity
   | DoubleLineEntity

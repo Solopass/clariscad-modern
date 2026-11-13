@@ -3,6 +3,7 @@
 // entity kinds only need a toPrims() case.
 import type { BBox, Entity, Id, SymbolDef, WallOpening } from "./types";
 import { type Transform2D, apply, applyDir, multiply, rotation, scaling, translation } from "./transform";
+import { textBoxCorners } from "./textMetrics";
 import {
   type Vec2,
   TAU,
@@ -84,6 +85,44 @@ export interface PrimContext {
   wallPrims?: Map<Id, WallSolveEntry>;
   /** Dimension geometry builder (depends on layer scale, drafting standard and units). */
   dimPrims?: (e: Extract<Entity, { kind: "dimension" }>) => Prim[];
+  /** Model mm per paper mm for a layer (text and annotation size). */
+  layerScale?: (layerId: Id) => number;
+}
+
+/**
+ * The text children of a symbol instance (nested symbols included), placed in the
+ * drawing: anchor through the placement, baseline direction through it too, height
+ * scaled by the placement's area scale, and turned upright if the placement mirrors.
+ */
+export function symbolTexts(inst: Extract<Entity, { kind: "symbol" }>, ctx?: PrimContext, parent?: Transform2D, depth = 0): Extract<Entity, { kind: "text" }>[] {
+  const def = symbolLookup(ctx, inst.symbolId);
+  if (!def || depth > 16) return [];
+  const own = symbolTransform(def.origin, inst.position, inst.rotation, inst.scaleX, inst.scaleY);
+  const T = parent ? multiply(parent, own) : own;
+  const det = T.a * T.d - T.b * T.c;
+  const out: Extract<Entity, { kind: "text" }>[] = [];
+  for (const c of def.entities) {
+    if (c.kind === "symbol") out.push(...symbolTexts(c, ctx, T, depth + 1).map((t) => ({ ...t, layerId: inst.layerId })));
+    if (c.kind !== "text") continue;
+    const dir = applyDir(T, { x: Math.cos(c.rotation), y: Math.sin(c.rotation) });
+    let rotation = Math.atan2(dir.y, dir.x);
+    let align = c.align;
+    if (det < 0) {
+      const a = normAngle(rotation);
+      if (a > Math.PI / 2 + 1e-9 && a <= (3 * Math.PI) / 2 + 1e-9) {
+        rotation = a - Math.PI;
+        align = align === "left" ? "right" : align === "right" ? "left" : align;
+      }
+    }
+    out.push({ ...c, id: `${inst.id}/${c.id}`, layerId: inst.layerId, position: apply(T, c.position), rotation, align, height: c.height * Math.sqrt(Math.abs(det)) });
+  }
+  return out;
+}
+
+/** Corners of a text entity's box in model space. */
+export function textCorners(e: Extract<Entity, { kind: "text" }>, ctx?: PrimContext): Vec2[] {
+  const k = ctx?.layerScale?.(e.layerId) ?? 1;
+  return textBoxCorners(e.position, e.text, e.height * k, e.rotation, e.align);
 }
 
 const isFull = (sweep: number) => sweep >= TAU - 1e-12;
@@ -350,6 +389,11 @@ export const isUnbounded = (e: Entity): boolean => e.kind === "guide";
 /** Bounding box of an entity's finite geometry; null if it has none (guides, empty or broken symbols). */
 export function entityBBox(e: Entity, ctx?: PrimContext): BBox | null {
   let out: BBox | null = null;
+  if (e.kind === "text") {
+    const b = emptyBox();
+    for (const p of textCorners(e, ctx)) grow(b, p);
+    return e.text ? b : null;
+  }
   if (e.kind === "dimension") {
     const b = emptyBox();
     for (const p of e.points) grow(b, p);
@@ -388,7 +432,7 @@ const primCache = new WeakMap<Entity, Prim[]>();
 
 /** Cached toPrims() for hot paths (snapping, hit-testing). */
 export function primsOf(e: Entity, ctx?: PrimContext): Prim[] {
-  if (e.kind === "symbol" || e.kind === "wall" || e.kind === "dimension") return toPrims(e, ctx);
+  if (e.kind === "symbol" || e.kind === "wall" || e.kind === "dimension" || e.kind === "text") return toPrims(e, ctx);
   let p = primCache.get(e);
   if (!p) {
     p = toPrims(e, ctx);
@@ -657,6 +701,9 @@ const boxSize = (b: BBox) => Math.max(b.maxX - b.minX, b.maxY - b.minY, 1e-9);
 
 export function toPrims(e: Entity, ctx?: PrimContext, depth = 0): Prim[] {
   switch (e.kind) {
+    case "text":
+      // No geometry to snap to or cut; picked by its box (see EntityIndex.distanceTo).
+      return [];
     case "line":
       return [{ t: "seg", a: e.a, b: e.b }];
     case "polyline":

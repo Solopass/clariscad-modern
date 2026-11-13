@@ -167,7 +167,51 @@ Design:
 - **Standards**: Layout ▸ Drafting Standard (ANSI, ISO, DIN, JIS, BS 308), undoable, re-styles all
   dimensions.
 
-### Milestone 5
+### Milestone 5: files, export, desktop (done 2026-11-13)
+
+- [x] Text entity + Text tool (Q): Helvetica metrics shared by canvas, PDF and DXF; double-click to edit; mirrors stay readable
+- [x] `.tcad` save/open with validation (damaged objects dropped with a warning; newer files refused); title shows
+      the file name and • when unsaved; "unsaved" follows undo; autosave every 30 s while unsaved + restore offer on start
+- [x] DXF: R12 writer (inches for imperial drawings, layers/colours/linetypes, blocks, bulges, text) and an R12/R2000+
+      reader (LWPOLYLINE, POLYLINE, ARC/CIRCLE incl. mirrored OCS, ELLIPSE, SPLINE, XLINE/RAY, TEXT/MTEXT, SOLID,
+      INSERT/BLOCKS, DIMENSION via its block); unknown entities reported, not fatal
+- [x] Plot dialog: paper sizes, orientation, plot scale or fit, black and white, pen widths by colour; vector PDF
+      (hand-written writer, tiled sheets with labels) and true-size SVG
+- [x] Desktop: Tauri dialog + fs plugins with scoped permissions; quit asks to save; shortcuts Ctrl/⌘ N O S ⇧S P
+
+Not done: native OS menu bar (deliberately: the in-window classic menu bar is the look we want, and two menu owners
+would fire shortcuts twice; a macOS app-menu bar should be added and tested on a Mac); hatch fills are not written
+to DXF (lines only); installers not built yet (`bun run tauri build` downloads WiX/NSIS on first run — ask first).
+
+Design:
+- **Text** (gap found while planning M5; DXF/PDF need it): `TextEntity { position, text, height (paper mm),
+  rotation, align }`, Text tool (click, type in an inline box), drawn at paper height × layer scale.
+- **Display list** (`io/plot.ts`): the drawing as renderer-neutral marks in model mm — strokes (polyline,
+  closed, pen width mm, colour, dash), fills (rings, colour), text (pos, angle, string, height). Built from
+  the same prims, hatches, dimension geometry and symbol fills the canvas uses. SVG and PDF consume it.
+- **SVG** (`io/svgExporter.ts`): true-size paper output at a chosen plot scale (mm units, viewBox), pen
+  widths in mm.
+- **PDF** (`io/pdfPlotter.ts`): small hand-written PDF 1.4 writer (no dependency): sheet sizes (Letter,
+  Legal, Tabloid, ANSI C/D, A4–A1), orientation, plot scale or fit, margins, multi-page tiling with page
+  labels, Helvetica text, MacPlot-style pen table (colour → width override).
+- **Native file** (`io/nativeJson.ts`): `.tcad` = `{ format, version, savedAt, document }`, validated on
+  load, migrations by version. Store gains `filePath`, `fileName`, `savedVersion` (dirty = version ≠ saved).
+  Autosave to localStorage every 30 s while dirty; on start, offer to restore a newer recovery copy.
+- **DXF** (`io/dxfCodec.ts`): writer = AutoCAD R12 ASCII (widest compatibility): HEADER ($ACADVER,
+  $INSUNITS), LTYPE + LAYER tables (ACI colours), BLOCKS for symbols, ENTITIES: LINE, CIRCLE, ARC,
+  POLYLINE/VERTEX with bulges, XLINE→long LINE (R12 has none), INSERT, TEXT; ellipses/splines/walls/
+  dimensions/hatches exported as geometry (polylines, lines, text). Reader = R12 and R2000+ ASCII:
+  LINE, CIRCLE, ARC, LWPOLYLINE, POLYLINE/VERTEX, ELLIPSE, SPLINE (control points + knots + weights,
+  or fit points), XLINE/RAY, TEXT/MTEXT (plain text), INSERT + BLOCKS, layers + colours, $INSUNITS.
+  DIMENSION and HATCH are imported via their anonymous blocks (plain geometry) or skipped with a count.
+- **Desktop** (Tauri v2): dialog + fs plugins for Open/Save/Save As/Export; native menu bar built in
+  Rust that forwards menu ids to the web UI (one handler table shared with the in-window menus);
+  window title shows file name and •unsaved; close asks to save. In a plain browser the same commands
+  use the File System Access API or download/upload.
+- **Packaging**: `bun run tauri build` makes the Windows installers (WiX/NSIS are downloaded by Tauri on
+  first build — ask the owner first). macOS builds must run on a Mac.
+
+### Milestone 6+ (not planned yet)
 
 See `ARCHITECTURE.md` §5.
 

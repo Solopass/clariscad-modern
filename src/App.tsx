@@ -8,6 +8,7 @@ import { LayersPalette } from "./components/LayersPalette";
 import { AttributesPalette } from "./components/AttributesPalette";
 import { SymbolsPalette } from "./components/SymbolsPalette";
 import { CoordinatesHUD } from "./components/CoordinatesHUD";
+import { useAppLifecycle } from "./components/useAppLifecycle";
 
 export type PaletteId = "modifiers" | "layers" | "attributes" | "symbols";
 export type PaletteState = Record<PaletteId, boolean>;
@@ -23,6 +24,7 @@ function loadOpen(): PaletteState {
 }
 
 export default function App() {
+  useAppLifecycle();
   const [open, setOpenState] = useState<PaletteState>(loadOpen);
   const setOpen = (id: PaletteId, v: boolean) =>
     setOpenState((s) => {

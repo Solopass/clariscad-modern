@@ -35,6 +35,8 @@ export interface BuildCtx {
   doc(): CadDocument;
   index(): EntityIndex;
   newId(): Id;
+  /** Ask the user for a line of text (null = cancelled). */
+  ask(question: string, initial: string): string | null;
   /** Pick radius in world units. */
   tolerance: number;
 }
@@ -361,7 +363,7 @@ const DRAW_TOOLS: ToolDef[] = [
   },
 ];
 
-const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer", "symbol"];
+const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer", "symbol", "text"];
 const ALL = [...DRAW_TOOLS, ...EDIT_TOOLS];
 /** Tools in palette order. */
 export const TOOLS: ToolDef[] = ORDER.map((id) => ALL.find((t) => t.id === id)!);

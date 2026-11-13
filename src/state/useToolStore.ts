@@ -23,7 +23,8 @@ export type ToolId =
   | "offset"
   | "fillet"
   | "chamfer"
-  | "symbol";
+  | "symbol"
+  | "text";
 
 export type TrimModeSetting = "both" | "first" | "none";
 
@@ -63,6 +64,10 @@ export interface ToolSettings {
   symbolId: string;
   symbolScale: number;
   symbolRotation: number;
+  /** Text tool: em height in paper mm, alignment, rotation (degrees). */
+  textHeight: number;
+  textAlign: "left" | "center" | "right";
+  textRotation: number;
 }
 
 export interface ToolState {
@@ -97,6 +102,7 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   fillet: "fillet",
   chamfer: "chamfer",
   symbol: "place",
+  text: "place",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -144,6 +150,9 @@ const DEFAULT_SETTINGS: ToolSettings = {
   symbolId: "builtin:door-single",
   symbolScale: 1,
   symbolRotation: 0,
+  textHeight: 3,
+  textAlign: "left",
+  textRotation: 0,
 };
 
 const KEY = "temaricad.tools.v1";

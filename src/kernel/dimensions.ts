@@ -6,6 +6,7 @@ import type { DimensionEntity, DraftingStandard, UnitSystem } from "./types";
 import type { Prim } from "./prims";
 import { lineLine } from "./intersections";
 import { formatLength } from "./units";
+import { textWidth } from "./textMetrics";
 import { type Vec2, TAU, add, angleInSweep, angleOf, dist, dot, fromAngle, mid, normAngle, normalize, perp, rotate, scale, sub } from "./vec";
 
 export type ArrowKind = "filled" | "open" | "tick" | "dot";
@@ -55,8 +56,7 @@ export interface DimGeometry {
   value: number;
 }
 
-/** Text width estimate (fixed per character so layout is deterministic). */
-export const textWidth = (str: string, h: number) => str.length * 0.6 * h;
+export { textWidth };
 
 const upright = (ang: number) => {
   let a = normAngle(ang);

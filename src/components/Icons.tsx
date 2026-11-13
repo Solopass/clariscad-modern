@@ -69,6 +69,12 @@ export function ToolIcon({ id }: { id: ToolId }) {
         return <path d="M4 18 L4 10 A 6 6 0 0 1 10 4 L18 4" {...S} />;
       case "chamfer":
         return <path d="M4 18 L4 10 L10 4 L18 4" {...S} />;
+      case "text":
+        return (
+          <text x="10" y="16" textAnchor="middle" fontSize="15" fontFamily="Georgia, serif" fill="currentColor">
+            A
+          </text>
+        );
       case "symbol":
         return (
           <g>

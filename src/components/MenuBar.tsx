@@ -1,10 +1,12 @@
 // Classic menu bar. Click a title to open; hover moves between open menus.
 import { useEffect, useState } from "react";
 import type { UnitSystem } from "../kernel/types";
-import { useDocumentStore, newDocument } from "../state/useDocumentStore";
+import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
 import { viewportRef } from "../canvas/controller";
 import { Dialog, type DialogField } from "./Dialog";
+import { PlotDialog } from "./PlotDialog";
+import { exportDxfFile, newDrawing, openDrawing, saveDrawing, saveDrawingAs } from "../state/fileCommands";
 import type { PaletteId, PaletteState } from "../App";
 import type { DraftingStandard } from "../kernel/types";
 import { explodeSelection, makeSymbol } from "../state/symbols";
@@ -42,6 +44,12 @@ const UNITS: [UnitSystem, string][] = [
 export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setPalette(id: PaletteId, v: boolean): void }) {
   const [open, setOpen] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
+  const [plotOpen, setPlotOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setPlotOpen(true);
+    window.addEventListener("temaricad:plot", open);
+    return () => window.removeEventListener("temaricad:plot", open);
+  }, []);
   const ds = useDocumentStore();
   const settings = useToolStore((s) => s.settings);
   const setSetting = useToolStore((s) => s.setSetting);
@@ -53,14 +61,14 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
     {
       title: "File",
       items: [
-        {
-          label: "New",
-          run: () => {
-            if (!ds.doc.entities.length || confirm("Discard this drawing and start a new one?")) ds.load(newDocument());
-          },
-        },
-        { label: "Open…  (Milestone 5)", disabled: true },
-        { label: "Save  (Milestone 5)", disabled: true },
+        { label: "New", shortcut: `${mod}N`, run: newDrawing },
+        { label: "Open…", shortcut: `${mod}O`, run: () => void openDrawing() },
+        "-",
+        { label: "Save", shortcut: `${mod}S`, run: () => void saveDrawing() },
+        { label: "Save As…", shortcut: `${mod}⇧S`, run: () => void saveDrawingAs() },
+        "-",
+        { label: "Export DXF…", run: () => void exportDxfFile() },
+        { label: "Plot (PDF / SVG)…", shortcut: `${mod}P`, run: () => setPlotOpen(true) },
       ],
     },
     {
@@ -208,6 +216,7 @@ export function MenuBar({ palettes, setPalette }: { palettes: PaletteState; setP
 
   return (
     <>
+    {plotOpen && <PlotDialog onClose={() => setPlotOpen(false)} />}
     {dialog && (
       <Dialog
         title={dialog.title}

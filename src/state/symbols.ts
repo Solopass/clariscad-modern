@@ -1,7 +1,7 @@
 // Symbols: make, explode, place, import/export, and the built-in starter set.
 import type { CadDocument, Entity, Id, SymbolDef, WallEntity } from "../kernel/types";
 import { entityBBox, symbolTransform, toPrims, unionBox, flattenPrim } from "../kernel/prims";
-import { similarityOf, transformEntity } from "../kernel/edit";
+import { similarityOf, transformEntity, uprightText } from "../kernel/edit";
 import { apply, multiply, type Transform2D } from "../kernel/transform";
 import { fitOpening, wallParam } from "../kernel/wallSolver";
 import { type Vec2, cross, dist, normAngle, sub } from "../kernel/vec";
@@ -88,6 +88,12 @@ export function explodeChild(child: Entity, T: Transform2D, sx: number, sy: numb
       return [{ ...child, id, layerId, a: m(child.a), b: m(child.b), thickness: child.thickness * Math.sqrt(Math.abs(sx * sy)), openings: undefined }];
     case "doubleLine":
       return [{ ...child, id, layerId, a: m(child.a), b: m(child.b), width: child.width * Math.sqrt(Math.abs(sx * sy)) }];
+    case "text": {
+      const dir = { x: Math.cos(child.rotation), y: Math.sin(child.rotation) };
+      const md = { x: T.a * dir.x + T.c * dir.y, y: T.b * dir.x + T.d * dir.y };
+      const up = sx * sy < 0 ? uprightText(Math.atan2(md.y, md.x), child.align) : { rotation: Math.atan2(md.y, md.x), align: child.align };
+      return [{ ...child, id, layerId, position: m(child.position), rotation: up.rotation, align: up.align, height: child.height * Math.sqrt(Math.abs(sx * sy)) }];
+    }
     case "line":
       return [{ ...child, id, layerId, a: m(child.a), b: m(child.b) }];
     case "polygon":

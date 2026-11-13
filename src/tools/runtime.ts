@@ -24,6 +24,8 @@ export interface ToolContext {
   /** Pick radius in world units. */
   tolerance(): number;
   newId(): string;
+  /** Ask the user for a line of text (null = cancelled). */
+  ask?(question: string, initial: string): string | null;
 }
 
 export interface PointerInfo {
@@ -120,6 +122,7 @@ export class DrawTool implements Tool {
       doc: () => this.ctx.doc(),
       index: () => this.ctx.index(),
       newId: () => this.ctx.newId(),
+      ask: (q, init) => (this.ctx.ask ? this.ctx.ask(q, init) : null),
       tolerance: tol,
       entityAt,
       primAt: (p: Vec2): Prim | null => {

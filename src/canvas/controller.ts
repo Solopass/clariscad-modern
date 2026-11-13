@@ -114,6 +114,7 @@ export class ViewportController {
       settings: () => useToolStore.getState().settings,
       tolerance: () => PICK_PX / this.cam.zoom,
       newId: () => newId(),
+      ask: (q, init) => window.prompt(q, init),
     };
   }
 
@@ -251,7 +252,18 @@ export class ViewportController {
 
   private onDbl = (ev: MouseEvent) => {
     const info = this.info(ev);
-    if (info) this.tool.dblclick(info);
+    if (!info) return;
+    // Double-clicking text with the Select tool edits it.
+    if (this.tool instanceof SelectTool && !this.tool.busy()) {
+      const ds = useDocumentStore.getState();
+      const hit = ds.index.nearest(info.raw, PICK_PX / this.cam.zoom)[0]?.entity;
+      if (hit?.kind === "text") {
+        const text = window.prompt("Text", hit.text);
+        if (text && text !== hit.text) ds.commit({ label: "Edit Text", ops: [{ op: "replace", before: hit, after: { ...hit, text } }] });
+        return;
+      }
+    }
+    this.tool.dblclick(info);
     this.mark("overlay");
   };
 
@@ -413,11 +425,11 @@ export class ViewportController {
 
     const ov = this.tool.overlay(info);
     for (const s of ov.shapes) {
-      const ent = { ...s, id: "preview", layerId: "" } as Entity;
+      const ent = { ...s, id: "preview", layerId: ds.doc.activeLayerId } as Entity;
       strokeEntity(ctx, ent, dc, { color: CLASSIC.preview, width: 1, dash: s.kind === "guide" ? [4, 4] : [] });
     }
     for (const s of ov.highlight) {
-      const ent = { ...s, id: "preview", layerId: "" } as Entity;
+      const ent = { ...s, id: "preview", layerId: ds.doc.activeLayerId } as Entity;
       strokeEntity(ctx, ent, dc, { color: CLASSIC.snap, width: 2, dash: [5, 3] });
     }
     if (ov.outline && ov.outline.length > 1) {

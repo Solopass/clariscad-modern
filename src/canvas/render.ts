@@ -2,10 +2,11 @@
 // camera in float64; the canvas only ever sees screen pixels.
 import type { DimensionEntity, Entity, Layer, SymbolDef, Id, UnitSystem } from "../kernel/types";
 import { type DimStyle, dimGeometry } from "../kernel/dimensions";
+import { textWidth } from "../kernel/textMetrics";
 import { handlesOf } from "../kernel/handles";
 import { entityHatch, fillRings, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
-import { type Prim, type PrimContext, flattenPrim, primsOf, symbolTransform } from "../kernel/prims";
+import { type Prim, type PrimContext, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
 import { type Camera, viewBox, worldToScreen } from "./camera";
 
@@ -191,6 +192,7 @@ export interface DrawContext {
 
 export function strokeEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawContext, override?: { color?: string; width?: number; dash?: number[] }) {
   if (e.kind === "dimension") return drawDimension(ctx, e, dc, override?.color);
+  if (e.kind === "text") return drawText(ctx, e, dc, override?.color);
   const layer = dc.layers.get(e.layerId);
   const isGuide = e.kind === "guide";
   ctx.strokeStyle = override?.color ?? (isGuide ? dc.theme.guide : (e.style?.color ?? layer?.color ?? dc.theme.ink));
@@ -211,6 +213,7 @@ export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<E
     if (e.style?.fill) fillEntity(ctx, e, dc);
     if (e.kind === "symbol") fillSymbol(ctx, e, dc);
     strokeEntity(ctx, e, dc);
+    if (e.kind === "symbol") for (const t of symbolTexts(e, dc.symbols)) drawText(ctx, t, dc);
   }
 }
 
@@ -295,6 +298,35 @@ export function fillEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawCon
 /** Classic black square selection handles at an entity's key points (the grip handles). */
 export function handlePoints(e: Entity): Vec2[] {
   return handlesOf(e).map((h) => h.p);
+}
+
+export const TEXT_FONT = `"Helvetica Neue", Helvetica, Arial, sans-serif`;
+
+/** A text entity at its paper height × layer scale. */
+export function drawText(ctx: CanvasRenderingContext2D, e: Extract<Entity, { kind: "text" }>, dc: DrawContext, color?: string) {
+  const layer = dc.layers.get(e.layerId);
+  const px = e.height * (layer?.scale ?? 1) * dc.cam.zoom;
+  const s = worldToScreen(dc.cam, e.position);
+  if (px < 2) {
+    // Too small to read: a grey bar the size of the text keeps its place visible.
+    const w = textWidth(e.text, e.height * (layer?.scale ?? 1)) * dc.cam.zoom;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(-e.rotation);
+    ctx.fillStyle = "#bbb";
+    ctx.fillRect(e.align === "left" ? 0 : e.align === "center" ? -w / 2 : -w, -Math.max(1, px * 0.7), Math.max(1, w), Math.max(1, px * 0.7));
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(-e.rotation);
+  ctx.font = `${px}px ${TEXT_FONT}`;
+  ctx.textAlign = e.align;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = color ?? e.style?.color ?? layer?.color ?? dc.theme.ink;
+  ctx.fillText(e.text, 0, 0);
+  ctx.restore();
 }
 
 /** Dimension: extension/dimension lines, arrowheads and upright text. */

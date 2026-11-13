@@ -183,10 +183,12 @@ export function syncContext(doc: CadDocument, index: EntityIndex, what: { symbol
   }
   if (what.dims || !ctx.dimPrims) {
     const scales = new Map(doc.layers.map((l) => [l.id, l.scale]));
+    ctx.layerScale = (id) => scales.get(id) ?? 1;
     const style = STANDARDS[doc.standard] ?? STANDARDS.ANSI;
     const units = doc.units;
     ctx.dimPrims = (e) => geometryPrims(dimGeometry(e, scales.get(e.layerId) ?? 1, style, units));
-    if (what.dims) for (const e of doc.entities) if (e.kind === "dimension") index.upsert(e);
+    // Annotation sizes follow the layer scale: re-index dimensions and text.
+    if (what.dims) for (const e of doc.entities) if (e.kind === "dimension" || e.kind === "text") index.upsert(e);
   }
   const walls = doc.entities.filter((e): e is WallEntity => e.kind === "wall");
   if (what.walls) {

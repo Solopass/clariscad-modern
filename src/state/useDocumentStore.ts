@@ -34,6 +34,9 @@ export const newId = (prefix = "e") => `${prefix}${Date.now().toString(36)}${(co
 
 const UNDO_LIMIT = 500;
 
+/** Marker for "has never matched any undo state" (a restored, unsaved drawing). */
+export const NEVER_SAVED = Symbol("never-saved");
+
 export interface DocumentState {
   doc: CadDocument;
   index: EntityIndex;
@@ -45,8 +48,21 @@ export interface DocumentState {
   commit(p: Patch): void;
   undo(): void;
   redo(): void;
-  load(doc: CadDocument): void;
+  /** Replace the drawing. `dirty` marks it unsaved (e.g. a restored recovery copy). */
+  load(doc: CadDocument, file?: { name?: string; path?: string | null; dirty?: boolean }): void;
   setSelection(ids: Iterable<Id>): void;
+  /** File name shown in the title ("Untitled" until saved). */
+  fileName: string;
+  /** Where the drawing was opened from / saved to (desktop path, or null). */
+  filePath: string | null;
+  /**
+   * The undo-stack top when the drawing was last saved (null = saved/new with nothing
+   * done). Unsaved = the current top is a different patch, so undoing back to the
+   * saved state counts as clean again.
+   */
+  savedTop: Patch | null | typeof NEVER_SAVED;
+  markSaved(file: { name: string; path?: string | null }): void;
+  isDirty(): boolean;
   /** Display units (undoable). */
   setUnits(u: UnitSystem): void;
   /** Drafting standard for dimensions (undoable). */
@@ -62,6 +78,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
     selection: new Set(),
     undoStack: [],
     redoStack: [],
+    fileName: "Untitled",
+    filePath: null,
+    savedTop: null,
+
+    markSaved(file) {
+      set({ fileName: file.name, filePath: file.path ?? get().filePath, savedTop: get().undoStack.at(-1) ?? null });
+    },
+
+    isDirty() {
+      const s = get();
+      return (s.undoStack.at(-1) ?? null) !== s.savedTop;
+    },
 
     commit(p) {
       if (!p.ops.length) return;
@@ -89,8 +117,18 @@ export const useDocumentStore = create<DocumentState>((set, get) => {
       set({ doc: next, version: s.version + 1, undoStack: [...s.undoStack, p], redoStack: s.redoStack.slice(0, -1), selection: pruneSelection(s.selection, s.index) });
     },
 
-    load(doc) {
-      set({ doc, index: buildIndex(doc), version: get().version + 1, undoStack: [], redoStack: [], selection: new Set() });
+    load(doc, file = {}) {
+      set({
+        doc,
+        index: buildIndex(doc),
+        version: get().version + 1,
+        undoStack: [],
+        redoStack: [],
+        selection: new Set(),
+        fileName: file.name ?? "Untitled",
+        filePath: file.path ?? null,
+        savedTop: file.dirty ? NEVER_SAVED : null,
+      });
     },
 
     setSelection(ids) {
