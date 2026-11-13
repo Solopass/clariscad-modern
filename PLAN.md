@@ -9,6 +9,9 @@ Spec and data model: `ARCHITECTURE.md`.
 - `bun run typecheck`
 - `bun run dev`: web UI at http://127.0.0.1:5183 (browser-pane preview config `temaricad` in `D:\Workspace\.claude\launch.json`)
 - `bun run tauri dev`: desktop window (first Rust build takes about a minute)
+- `bun run tauri build`: Windows installers in `src-tauri\target\release\bundle\` — `msi\TemariCad_<ver>_x64_en-US.msi`
+  and `nsis\TemariCad_<ver>_x64-setup.exe` (first built 2026-11-13, ~90 s; unsigned, so Windows SmartScreen
+  warns on install; icons are still Tauri's placeholders)
 
 ## Status
 
