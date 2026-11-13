@@ -4,7 +4,7 @@ import type { DimRef, DimensionType, Entity, Id, WallEntity } from "../kernel/ty
 import { entityBBox, primsOf, closestOnPrim } from "../kernel/prims";
 import { chamfer, extendTo, fillet, offsetEntity, splitAt, trimAt, trimPiece, type EditResult } from "../kernel/booleanOps";
 import { handleAt } from "../kernel/handles";
-import { fitOpening, wallParam } from "../kernel/wallSolver";
+import { breakForCrossing, extendToBar, fitOpening, wallParam } from "../kernel/wallSolver";
 import { type Vec2, add, dist, normalize, perp, scale, sub } from "../kernel/vec";
 import { editPatch, replacePatch } from "../state/ops";
 import { findSymbol, placeSymbolPatch } from "../state/symbols";
@@ -469,5 +469,53 @@ const TEXT: ToolDef = {
   ],
 };
 
-export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, SYMBOL, TEXT];
+const CLEANUP: ToolDef = {
+  id: "cleanup",
+  label: "Clean Up",
+  key: "b",
+  methods: [
+    {
+      id: "openT",
+      label: "Open T",
+      points: 2,
+      rawPicks: [0, 1],
+      prompts: ["Click the wall that should run into the joint", "Click the wall it meets"],
+      preview: ([p0, p1], ctx) => {
+        const a = ctx.entityAt(p0);
+        const b = p1 ? ctx.entityAt(p1) : null;
+        return { highlight: [a, b].filter((e): e is WallEntity => e?.kind === "wall").map(shapeOf) };
+      },
+      edit: ([p0, p1], ctx) => {
+        const a = ctx.entityAt(p0);
+        const b = ctx.entityAt(p1);
+        if (a?.kind !== "wall" || b?.kind !== "wall" || a.id === b.id) return null;
+        const after = extendToBar(a, b);
+        return after ? { label: "Clean Up T", ops: [{ op: "replace", before: a, after }] } : null;
+      },
+    },
+    {
+      id: "break",
+      label: "Break",
+      points: 2,
+      rawPicks: [0, 1],
+      prompts: ["Click the wall to break open", "Click the wall that crosses it"],
+      preview: ([p0, p1], ctx) => {
+        const a = ctx.entityAt(p0);
+        const b = p1 ? ctx.entityAt(p1) : null;
+        if (a?.kind !== "wall" || b?.kind !== "wall") return { highlight: a?.kind === "wall" ? [shapeOf(a)] : [] };
+        const after = breakForCrossing(a, b);
+        return { highlight: [shapeOf(after ?? a)] };
+      },
+      edit: ([p0, p1], ctx) => {
+        const a = ctx.entityAt(p0);
+        const b = ctx.entityAt(p1);
+        if (a?.kind !== "wall" || b?.kind !== "wall" || a.id === b.id) return null;
+        const after = breakForCrossing(a, b);
+        return after && after !== a ? { label: "Break Wall", ops: [{ op: "replace", before: a, after }] } : null;
+      },
+    },
+  ],
+};
+
+export const EDIT_TOOLS: ToolDef[] = [WALL, DIMENSION, TRIM, EXTEND, SPLIT, OFFSET, FILLET, CHAMFER, CLEANUP, SYMBOL, TEXT];
 

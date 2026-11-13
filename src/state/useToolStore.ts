@@ -2,7 +2,7 @@
 // viewer in localStorage (best effort).
 import { create } from "zustand";
 import type { Modifiers } from "../kernel/snapEngine";
-import type { Justify } from "../kernel/types";
+import type { Justify, LineEnding } from "../kernel/types";
 
 export type ToolId =
   | "select"
@@ -24,7 +24,8 @@ export type ToolId =
   | "fillet"
   | "chamfer"
   | "symbol"
-  | "text";
+  | "text"
+  | "cleanup";
 
 export type TrimModeSetting = "both" | "first" | "none";
 
@@ -68,6 +69,11 @@ export interface ToolSettings {
   textHeight: number;
   textAlign: "left" | "center" | "right";
   textRotation: number;
+  /** "" = no cap. Applied to new objects and, via the attributes palette, the selection. */
+  startEnding: "" | LineEnding;
+  endEnding: "" | LineEnding;
+  /** Select tool: only this kind, or "all". */
+  selectFilter: string;
 }
 
 export interface ToolState {
@@ -103,6 +109,7 @@ const DEFAULT_METHODS: Record<ToolId, string> = {
   chamfer: "chamfer",
   symbol: "place",
   text: "place",
+  cleanup: "openT",
 };
 
 const DEFAULT_MODIFIERS: Modifiers = {
@@ -153,6 +160,9 @@ const DEFAULT_SETTINGS: ToolSettings = {
   textHeight: 3,
   textAlign: "left",
   textRotation: 0,
+  startEnding: "",
+  endEnding: "",
+  selectFilter: "all",
 };
 
 const KEY = "temaricad.tools.v1";

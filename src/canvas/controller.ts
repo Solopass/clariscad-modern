@@ -5,12 +5,14 @@ import type { Entity, Id } from "../kernel/types";
 import { snap, type SnapResult } from "../kernel/snapEngine";
 import { entityBBox, unionBox } from "../kernel/prims";
 import { STANDARDS } from "../kernel/dimensions";
-import { duplicate } from "../state/arrange";
+import { sheetBounds, sheetPages } from "../state/sheetModel";
+import { matchShortcut } from "../input/keymap";
+import { runCommand } from "../input/runCommand";
 import { type Vec2, dist } from "../kernel/vec";
 import { useDocumentStore, newId } from "../state/useDocumentStore";
-import { useToolStore, type ToolId } from "../state/useToolStore";
+import { useToolStore } from "../state/useToolStore";
 import { useCursorStore } from "../state/useCursorStore";
-import { methodDef, TOOLS, type Shape } from "../tools/defs";
+import { methodDef, type Shape } from "../tools/defs";
 import { DrawTool, SelectTool, type PointerInfo, type Tool, type ToolContext } from "../tools/runtime";
 import { type Camera, fitBox, panBy, screenToWorld, viewBox, worldToScreen, zoomAt } from "./camera";
 import {
@@ -40,6 +42,7 @@ export class ViewportController {
   private panning: { x: number; y: number } | null = null;
   private spaceDown = false;
   private anchors: Vec2[] = [];
+  private wasBusy = false;
   private unsubs: (() => void)[] = [];
   private ro: ResizeObserver;
 
@@ -53,12 +56,12 @@ export class ViewportController {
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(host);
     this.resize();
-    // Start with roughly 20 feet across.
-    this.cam = { ...this.cam, zoom: Math.max(0.05, this.cam.width / 6096), cx: 2500, cy: 1500 };
+    // Until the page can be framed, sit near the origin instead of a blank zoom.
+    if (!this.seenSize) this.cam = { ...this.cam, zoom: 0.08, cx: 2000, cy: 1500 };
 
     this.unsubs.push(
       useDocumentStore.subscribe((s, prev) => {
-        if (s.version !== prev.version) this.mark("static", "overlay");
+        if (s.version !== prev.version) this.mark("grid", "static", "overlay");
         if (s.selection !== prev.selection) this.mark("overlay");
       }),
       useToolStore.subscribe((s, prev) => {
@@ -81,6 +84,8 @@ export class ViewportController {
     over.addEventListener("contextmenu", this.onContext);
     window.addEventListener("keydown", this.onKey);
     window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("temaricad:fit", this.onFit);
+    window.addEventListener("temaricad:fit-sheet", this.onFitSheet);
     this.loop();
   }
 
@@ -100,6 +105,8 @@ export class ViewportController {
     o.removeEventListener("contextmenu", this.onContext);
     window.removeEventListener("keydown", this.onKey);
     window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("temaricad:fit", this.onFit);
+    window.removeEventListener("temaricad:fit-sheet", this.onFitSheet);
   }
 
   // ------------------------------------------------------------ tools
@@ -138,6 +145,7 @@ export class ViewportController {
 
   zoomBy(f: number) {
     this.cam = zoomAt(this.cam, { x: this.cam.width / 2, y: this.cam.height / 2 }, f);
+    this.publishView();
     this.mark("grid", "static", "overlay");
   }
 
@@ -148,9 +156,31 @@ export class ViewportController {
       const b = entityBBox(e, useDocumentStore.getState().index.ctx);
       if (b) box = box ? unionBox(box, b) : b;
     }
-    if (!box) return;
+    if (!box) return this.fitSheet();
     this.cam = fitBox(this.cam, box);
+    this.publishView();
     this.mark("grid", "static", "overlay");
+  }
+
+  /** Frame the sheet (every page), the way a new Claris drawing opens on the page. */
+  fitSheet() {
+    const b = sheetBounds(useDocumentStore.getState().doc);
+    this.cam = fitBox(this.cam, b, 28);
+    this.publishView();
+    this.mark("grid", "static", "overlay");
+  }
+
+  private onFit = () => {
+    const n = useDocumentStore.getState().doc.entities.filter((e) => e.kind !== "guide").length;
+    if (n) this.zoomFit();
+    else this.fitSheet();
+  };
+
+  private onFitSheet = () => this.fitSheet();
+
+  private publishView() {
+    const c = this.cam;
+    useCursorStore.getState().set({ view: { cx: c.cx, cy: c.cy, zoom: c.zoom, width: c.width, height: c.height }, zoom: c.zoom });
   }
 
   // ------------------------------------------------------------ input
@@ -175,7 +205,7 @@ export class ViewportController {
     if (shift && from) modifiers.angle = true;
     const angleStep = ((modifiers.angle && !ts.modifiers.angle ? 45 : ts.settings.angleStep) * Math.PI) / 180;
     const wantsSnap = this.tool.wantsSnap();
-    const res = wantsSnap
+    let res = wantsSnap
       ? snap(raw, ds.index, { modifiers, tolerance: PICK_PX / this.cam.zoom, grid: { spacing: ts.settings.gridSpacing }, angleStep }, {
           from,
           anchors: this.anchors,
@@ -183,9 +213,31 @@ export class ViewportController {
           filter: (e) => e.kind !== "dimension" && layers.get(e.layerId)?.visible !== false,
         })
       : null;
+    const busy = this.tool.busy();
+    // Drop construction points once the command ends, but keep hovered endpoints for alignment.
+    if (!busy && this.wasBusy) this.anchors = [];
+    this.wasBusy = busy;
+    // Earlier clicks of this command snap like endpoints, so a polygon can close on its first vertex.
+    // The point just placed (`from`) is excluded, or the cursor would stick to it.
+    if (busy && this.anchors.length) {
+      const tol = PICK_PX / this.cam.zoom;
+      let hit: Vec2 | null = null;
+      let best = tol;
+      for (const a of this.anchors) {
+        if (from && dist(a, from) <= 1e-6) continue;
+        const d = dist(raw, a);
+        if (d <= best) {
+          best = d;
+          hit = a;
+        }
+      }
+      if (hit && (!res || res.kind === "none" || res.kind === "grid" || res.kind === "alignment" || dist(res.point, raw) >= best)) {
+        res = { point: hit, kind: "endpoint", label: "END", entityIds: [], guides: [] };
+      }
+    }
     this.lastSnap = res;
     if (res && ["endpoint", "midpoint", "center", "intersection", "quadrant"].includes(res.kind)) {
-      if (!this.anchors.some((a) => dist(a, res.point) < 1e-9)) this.anchors = [res.point, ...this.anchors].slice(0, 6);
+      if (!this.anchors.some((a) => dist(a, res.point) < 1e-9)) this.anchors = [res.point, ...this.anchors].slice(0, 32);
     }
     const info: PointerInfo = { p: res?.point ?? raw, raw, screen, shift, alt, ctrl, ids: res?.entityIds };
     this.lastInfo = info;
@@ -211,6 +263,7 @@ export class ViewportController {
     if (this.panning) {
       this.cam = panBy(this.cam, ev.clientX - this.panning.x, ev.clientY - this.panning.y);
       this.panning = { x: ev.clientX, y: ev.clientY };
+      this.publishView();
       this.mark("grid", "static", "overlay");
       return;
     }
@@ -278,78 +331,53 @@ export class ViewportController {
     ev.preventDefault();
     const r = this.over.getBoundingClientRect();
     const s = { x: ev.clientX - r.left, y: ev.clientY - r.top };
-    if (ev.ctrlKey || Math.abs(ev.deltaY) >= 50 || ev.deltaMode !== 0 || Number.isInteger(ev.deltaY) && ev.deltaX === 0) {
-      // Mouse wheel or pinch: zoom at cursor.
+    // Pinch (ctrl) and a mouse-wheel tick zoom. A trackpad's two-finger slide pans, including a long flick.
+    const wheelZoom = ev.ctrlKey || ev.deltaMode !== 0 || (ev.deltaX === 0 && Math.abs(ev.deltaY) >= 50);
+    if (wheelZoom) {
       const k = ev.deltaMode === 1 ? 0.05 : 0.0015;
       this.cam = zoomAt(this.cam, s, Math.exp(-ev.deltaY * k * (ev.ctrlKey ? 4 : 1)));
     } else {
-      // Two-finger trackpad scroll: pan.
       this.cam = panBy(this.cam, -ev.deltaX, -ev.deltaY);
     }
+    this.publishView();
     this.mark("grid", "static", "overlay");
   };
 
   private onKey = (ev: KeyboardEvent) => {
     const t = ev.target as HTMLElement | null;
     if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    const ctrl = ev.ctrlKey || ev.metaKey;
-    const ds = useDocumentStore.getState();
-    if (ctrl && (ev.key === "z" || ev.key === "Z")) {
-      ev.preventDefault();
-      this.tool.cancel();
-      if (ev.shiftKey) ds.redo();
-      else ds.undo();
-      return;
-    }
-    if (ctrl && (ev.key === "y" || ev.key === "Y")) {
-      ev.preventDefault();
-      this.tool.cancel();
-      ds.redo();
-      return;
-    }
-    if (ctrl && (ev.key === "d" || ev.key === "D")) {
-      ev.preventDefault();
-      const g = useToolStore.getState().settings.gridSpacing;
-      duplicate({ x: g, y: -g });
-      return;
-    }
-    if (ctrl && (ev.key === "a" || ev.key === "A")) {
-      ev.preventDefault();
-      useToolStore.getState().setTool("select");
-      ds.setSelection(ds.doc.entities.map((e) => e.id));
-      return;
-    }
     if (ev.key === " ") {
       this.spaceDown = true;
       ev.preventDefault();
       return;
     }
-    if (this.tool.key(ev.key, { shift: ev.shiftKey, ctrl })) {
+    const hit = matchShortcut(ev);
+    const host = {
+      zoomBy: (f: number) => this.zoomBy(f),
+      zoomFit: () => this.zoomFit(),
+      fitSheet: () => this.fitSheet(),
+      cancelTool: () => this.tool.cancel(),
+    };
+    // Modifier and Alt chords win over an in-progress command (Copy, Group, the grid toggle).
+    if (hit && (hit.chord.mod || hit.chord.alt)) {
+      ev.preventDefault();
+      runCommand(hit.id, host);
+      this.mark("overlay");
+      return;
+    }
+    // The active command gets Escape, Enter, C-to-close, Delete and the arrow keys first.
+    if (this.tool.key(ev.key, { shift: ev.shiftKey, ctrl: ev.ctrlKey || ev.metaKey })) {
       ev.preventDefault();
       this.mark("overlay");
       return;
     }
-    if (ctrl) {
-      if (ev.key === "=" || ev.key === "+") (ev.preventDefault(), this.zoomBy(1.5));
-      else if (ev.key === "-") (ev.preventDefault(), this.zoomBy(1 / 1.5));
-      else if (ev.key === "0") (ev.preventDefault(), this.zoomFit());
+    if (hit) {
+      ev.preventDefault();
+      runCommand(hit.id, host);
+      this.mark("overlay");
       return;
     }
-    if (ev.key === "Escape") {
-      useToolStore.getState().setTool("select");
-      return;
-    }
-    if (ev.key === "f" || ev.key === "F") return this.zoomFit();
-    const tool = TOOLS.find((x) => x.key === ev.key.toLowerCase());
-    if (tool && !ev.altKey) {
-      if (tool.id === useToolStore.getState().tool) {
-        // Pressing the key again cycles through the tool's Methods.
-        const ms = tool.methods;
-        const cur = useToolStore.getState().methods[tool.id];
-        const i = ms.findIndex((m) => m.id === cur);
-        useToolStore.getState().setMethod(tool.id as ToolId, ms[(i + 1) % ms.length].id);
-      } else useToolStore.getState().setTool(tool.id);
-    }
+    if (ev.key === "Escape") useToolStore.getState().setTool("select");
   };
 
   private onKeyUp = (ev: KeyboardEvent) => {
@@ -363,9 +391,17 @@ export class ViewportController {
     for (const w of what) this.dirty[w] = true;
   }
 
+  private seenSize = false;
+
   private resize() {
     const r = this.host.getBoundingClientRect();
     this.cam = { ...this.cam, width: Math.max(1, r.width), height: Math.max(1, r.height) };
+    if (!this.seenSize && r.width > 40 && r.height > 40) {
+      this.seenSize = true;
+      this.fitSheet();
+      return;
+    }
+    this.publishView();
     this.mark("grid", "static", "overlay");
   }
 
@@ -393,7 +429,7 @@ export class ViewportController {
     if (this.dirty.grid) {
       const ctx = setupCanvas(this.grid, width, height);
       const s = useToolStore.getState().settings;
-      drawGrid(ctx, this.cam, CLASSIC, s.gridSpacing, s.gridVisible);
+      drawGrid(ctx, this.cam, CLASSIC, s.gridSpacing, s.gridVisible, sheetPages(useDocumentStore.getState().doc));
       this.dirty.grid = false;
     }
     if (this.dirty.static) {

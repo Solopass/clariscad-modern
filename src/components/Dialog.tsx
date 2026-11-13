@@ -13,12 +13,14 @@ export interface DialogField {
 interface Props {
   title: string;
   fields: DialogField[];
+  /** A line under the fields (a measured length, a hint). */
+  note?: string;
   okLabel?: string;
   onOk(values: Record<string, number>): void;
   onCancel(): void;
 }
 
-export function Dialog({ title, fields, okLabel = "OK", onOk, onCancel }: Props) {
+export function Dialog({ title, fields, note, okLabel = "OK", onOk, onCancel }: Props) {
   const units = useDocumentStore((s) => s.doc.units);
   const show = (f: DialogField) => (f.kind === "length" ? formatLength(f.value, units) : f.kind === "angle" ? `${+((f.value * 180) / Math.PI).toFixed(4)}°` : String(f.value));
   const [text, setText] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.key, show(f)])));
@@ -60,6 +62,7 @@ export function Dialog({ title, fields, okLabel = "OK", onOk, onCancel }: Props)
               </label>
             ))}
           </div>
+          {note && <p className="mt-2 max-w-[320px] text-[11px] text-[#444]">{note}</p>}
           {error && <p className="mt-2 text-[#d6001c]">{error}</p>}
           <div className="mt-4 flex justify-end gap-3">
             <button className="mac-btn" onClick={onCancel}>

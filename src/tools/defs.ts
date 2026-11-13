@@ -9,12 +9,14 @@ import type { Patch } from "../state/ops";
 import { EDIT_TOOLS } from "./editTools";
 import {
   arc3P,
+  arcFromTangent,
   arcStartEndRadius,
   circle2P,
   circle3P,
   rect3P,
   regularPolygon,
   regularPolygonFromEdge,
+  tangentAt,
   tangentTangentRadius,
 } from "../kernel/construct";
 import { type Vec2, angleOf, cross, dist, dot, fromAngle, mid, normAngle, normalize, sub, scale, perp } from "../kernel/vec";
@@ -52,6 +54,8 @@ export interface MethodDef {
   freehand?: boolean;
   /** Indices of clicks that pick an entity (raw cursor, must hit something) rather than a point. */
   rawPicks?: number[];
+  /** A many-point method that finishes when the cursor returns to the first point. */
+  closes?: boolean;
   /** Status-line prompt for the next click (index = points placed so far). */
   prompts: string[];
   /** Drawing methods: the new shape(s) from the points. */
@@ -243,6 +247,22 @@ const DRAW_TOOLS: ToolDef[] = [
           return arc ? { kind: "arc", ...arc } : null;
         },
       },
+      {
+        id: "tangent",
+        label: "Tangent",
+        points: 2,
+        rawPicks: [0],
+        prompts: ["Click the object the arc leaves, tangent at that point", "Arc end"],
+        build: ([a, b], ctx) => {
+          if (!b) return null;
+          const prim = ctx.primAt(a);
+          if (!prim) return null;
+          const t = tangentAt(prim, a);
+          if (!t) return null;
+          const arc = arcFromTangent(t.point, t.dir, b);
+          return arc ? { kind: "arc", ...arc } : null;
+        },
+      },
     ],
   },
   {
@@ -283,6 +303,19 @@ const DRAW_TOOLS: ToolDef[] = [
     label: "Regular Polygon",
     key: "g",
     methods: [
+      {
+        id: "vertices",
+        label: "Vertices",
+        points: "many",
+        min: 3,
+        closes: true,
+        prompts: ["First vertex", "Next vertex — click the first point, Enter, or double-click to close"],
+        build: (pts) => {
+          if (pts.length < 2) return null;
+          if (pts.length < 3) return { kind: "polyline", points: pts, closed: false };
+          return { kind: "polygon", points: pts };
+        },
+      },
       {
         id: "inscribed",
         label: "Center-Vertex",
@@ -359,11 +392,38 @@ const DRAW_TOOLS: ToolDef[] = [
         prompts: ["First point", "Second point"],
         build: ([a, b]) => (dist(a, b) > 0 ? { kind: "guide", point: a, dir: normalize(sub(b, a)) } : null),
       },
+      {
+        id: "perpendicular",
+        label: "Perpendicular",
+        points: 1,
+        rawPicks: [0],
+        prompts: ["Click a line, arc or circle — the guide is perpendicular there"],
+        build: ([p], ctx) => {
+          const prim = ctx.primAt(p);
+          if (!prim) return null;
+          const t = tangentAt(prim, p);
+          return t ? { kind: "guide", point: t.point, dir: perp(t.dir) } : null;
+        },
+      },
+      {
+        id: "parallel",
+        label: "Parallel",
+        points: 2,
+        rawPicks: [0],
+        prompts: ["Click the line or curve to match", "Point the parallel guide passes through"],
+        build: (pts, ctx) => {
+          const prim = ctx.primAt(pts[0]);
+          if (!prim) return null;
+          const t = tangentAt(prim, pts[0]);
+          if (!t) return null;
+          return { kind: "guide", point: pts[1] ?? t.point, dir: t.dir };
+        },
+      },
     ],
   },
 ];
 
-const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer", "symbol", "text"];
+const ORDER: ToolId[] = ["select", "line", "doubleLine", "wall", "cleanup", "rect", "circle", "arc", "ellipse", "polygon", "spline", "guide", "dimension", "trim", "extend", "split", "offset", "fillet", "chamfer", "symbol", "text"];
 const ALL = [...DRAW_TOOLS, ...EDIT_TOOLS];
 /** Tools in palette order. */
 export const TOOLS: ToolDef[] = ORDER.map((id) => ALL.find((t) => t.id === id)!);

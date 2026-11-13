@@ -6,6 +6,9 @@ import { buildDisplayList } from "../io/plot";
 import { exportSvg, type PlotStyle } from "../io/svgExporter";
 import { plotPdf, sheetLayout, type PdfOptions } from "../io/pdfPlotter";
 import { entityBBox, unionBox } from "../kernel/prims";
+import { STANDARDS } from "../kernel/dimensions";
+import { CLASSIC, drawEntities } from "../canvas/render";
+import { sheetBounds } from "./sheetModel";
 import { pdfBytes } from "../io/pdfWriter";
 import { isTauri, openFile, saveFile } from "../io/platform";
 import { clearRecovery } from "../io/recovery";
@@ -82,6 +85,48 @@ export const saveDrawingAs = () => writeDrawing(true);
 export async function exportDxfFile() {
   const s = store();
   await saveFile({ suggestedName: `${stem(s.fileName)}.dxf`, filters: [DXF], data: exportDxf(s.doc, s.index.ctx ?? {}) });
+}
+
+/** A picture of the drawing (white background, true pen weights). Guides are left out. */
+export async function exportPngFile() {
+  const s = store();
+  const real = s.doc.entities.some((e) => e.kind !== "guide");
+  let box = real ? plotExtent() : sheetBounds(s.doc);
+  const span = Math.max(box.maxX - box.minX, box.maxY - box.minY, 1);
+  const pad = span * 0.04;
+  box = { minX: box.minX - pad, minY: box.minY - pad, maxX: box.maxX + pad, maxY: box.maxY + pad };
+  const w = box.maxX - box.minX;
+  const h = box.maxY - box.minY;
+  const zoom = Math.min(3200 / w, 3200 / h);
+  const width = Math.max(2, Math.round(w * zoom));
+  const height = Math.max(2, Math.round(h * zoom));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  drawEntities(
+    ctx,
+    s.doc.entities.filter((e) => e.kind !== "guide"),
+    {
+      cam: { cx: (box.minX + box.maxX) / 2, cy: (box.minY + box.maxY) / 2, zoom, width, height },
+      theme: CLASSIC,
+      layers: new Map(s.doc.layers.map((l) => [l.id, l])),
+      symbols: s.index.ctx ?? {},
+      showWeights: true,
+      dimStyle: STANDARDS[s.doc.standard] ?? STANDARDS.ANSI,
+      units: s.doc.units,
+    },
+  );
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+  if (!blob) return;
+  await saveFile({
+    suggestedName: `${stem(s.fileName)}.png`,
+    filters: [{ name: "PNG", extensions: ["png"] }],
+    data: new Uint8Array(await blob.arrayBuffer()),
+  });
 }
 
 /** Plot: tolerance follows the plot scale so curves stay smooth on paper. */

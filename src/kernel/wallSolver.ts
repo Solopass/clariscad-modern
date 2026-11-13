@@ -1,6 +1,7 @@
 // Smart walls: clean junctions across the whole drawing.
 //
 //  L corner  – two walls share an endpoint: their faces run to where they meet (mitre), no caps.
+//  Y joint   – three or more walls share an endpoint: each face mitres to its angular neighbour.
 //  T join    – a wall's end lies inside another wall's band: its faces run to that wall's
 //              near face, which gets a gap between them. No cap.
 //  X cross   – walls pass through each other: each wall's faces are removed inside the other band.
@@ -80,7 +81,9 @@ function endCondition(w: W, atB: boolean, all: W[]): End {
     }
     return { cap: false, u, reach: uEnd };
   }
-  if (sharers.length > 1) return { cap: false, u: [uEnd, uEnd], reach: uEnd };
+  // Three or more walls share this endpoint: each face mitres to its angular neighbour
+  // (a Y junction). A grazing neighbour is left square so the mitre cannot run away.
+  if (sharers.length > 1) return multiMitre(w, atB, sharers, P, uEnd);
 
   // T join: P inside another wall's band (not at its ends).
   for (const v of all) {
@@ -214,6 +217,35 @@ function openingFrames(w: W): { opening: WallOpening; T: Transform2D }[] {
     });
 }
 
+/** Mitre every face of `w` to the wall that sits on that side of the joint. */
+function multiMitre(w: W, atB: boolean, sharers: W[], P: Vec2, uEnd: number): End {
+  const info = [w, ...sharers].map((v) => {
+    const vAtB = v === w ? atB : dist(v.b, P) < EPS;
+    const away = vAtB ? scale(v.d, -1) : v.d;
+    return { v, vAtB, away, ang: Math.atan2(away.y, away.x) };
+  });
+  info.sort((a, b) => a.ang - b.ang);
+  const i = info.findIndex((x) => x.v === w);
+  const left = info[(i + 1) % info.length];
+  const right = info[(i - 1 + info.length) % info.length];
+  const sideOf = (vAtB: boolean, o: number) => (vAtB ? -o : o);
+  const u: [number, number] = [uEnd, uEnd];
+  for (let k = 0; k < 2; k++) {
+    const o = w.off[k];
+    const isLeft = sideOf(atB, o) >= sideOf(atB, w.off[1 - k]);
+    const n = isLeft ? left : right;
+    const nSide = (o2: number) => sideOf(n.vAtB, o2);
+    const nFaces = [...n.v.off].sort((a, b) => nSide(a) - nSide(b));
+    const ov = isLeft ? nFaces[0] : nFaces[nFaces.length - 1];
+    const t = faceMeet(w, o, facePoint(n.v, ov, 0), n.v.d);
+    if (t === null) continue;
+    const reach = Math.abs(t - uEnd);
+    const maxReach = Math.max(w.e.thickness, n.v.e.thickness) * 4;
+    if (reach <= maxReach) u[k] = t;
+  }
+  return { cap: false, u, reach: uEnd };
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
@@ -236,4 +268,42 @@ export function wallParam(w: WallEntity, p: Vec2): number {
   const len = dist(w.a, w.b);
   if (len === 0) return 0;
   return Math.max(0, Math.min(len, dot(sub(p, w.a), normalize(sub(w.b, w.a)))));
+}
+
+/**
+ * Pull the end of `stem` nearest the crossing onto `bar`'s centre line, so a near-miss
+ * becomes a T the solver can clean. Null when the lines miss the bar or already cross it.
+ */
+export function extendToBar(stem: WallEntity, bar: WallEntity): WallEntity | null {
+  const dS = sub(stem.b, stem.a);
+  const dB = sub(bar.b, bar.a);
+  const hit = lineLine(stem.a, dS, bar.a, dB);
+  if (!hit || hit.u < -0.02 || hit.u > 1.02) return null;
+  const len = dist(stem.a, stem.b);
+  if (len < EPS) return null;
+  if (hit.t > 1.02) return { ...stem, b: hit.point };
+  if (hit.t < -0.02) return { ...stem, a: hit.point };
+  const gap = Math.min(hit.t, 1 - hit.t) * len;
+  if (gap > Math.max(stem.thickness, bar.thickness)) return null;
+  return hit.t < 0.5 ? { ...stem, a: hit.point } : { ...stem, b: hit.point };
+}
+
+/**
+ * Cut a doorway-sized break in `target` where `cutter` crosses it. The opening stays
+ * if the cutter is later deleted (an X-join gap would not).
+ */
+export function breakForCrossing(target: WallEntity, cutter: WallEntity): WallEntity | null {
+  const dT = sub(target.b, target.a);
+  const dC = sub(cutter.b, cutter.a);
+  const hit = lineLine(target.a, dT, cutter.a, dC);
+  if (!hit) return null;
+  const len = dist(target.a, target.b);
+  const along = hit.t * len;
+  const onCutter = hit.u >= -0.02 && hit.u <= 1.02;
+  const onTarget = along > cutter.thickness && along < len - cutter.thickness;
+  if (!onCutter || !onTarget) return null;
+  const width = Math.max(cutter.thickness, 1);
+  if ((target.openings ?? []).some((o) => Math.abs(o.at - along) < (o.width + width) / 2)) return target;
+  const id = `op${Math.abs(Math.round(along * 1000)).toString(36)}`;
+  return { ...target, openings: [...(target.openings ?? []), { id, at: along, width }] };
 }

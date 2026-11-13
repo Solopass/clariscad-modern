@@ -26,6 +26,13 @@ export function ToolIcon({ id }: { id: ToolId }) {
         return <path d="M2 14 C 6 2, 10 18, 18 5" {...S} />;
       case "guide":
         return <path d="M1 10 L19 10 M10 1 L10 19" {...S} strokeDasharray="2 2" strokeWidth={1} />;
+      case "cleanup":
+        return (
+          <g>
+            <path d="M2 14 L10 6 L18 14" {...S} />
+            <path d="M10 6 L10 18" {...S} />
+          </g>
+        );
       case "wall":
         return (
           <g>

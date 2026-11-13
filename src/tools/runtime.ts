@@ -10,6 +10,7 @@ import { translation } from "../kernel/transform";
 import { handlesOf, moveHandle } from "../kernel/handles";
 import { simplifyPolyline } from "../kernel/simplify";
 import { type Vec2, dist, sub } from "../kernel/vec";
+import { expandSelection } from "../state/groups";
 import { type Patch, addPatch, removePatch, replacePatch } from "../state/ops";
 import type { ToolSettings } from "../state/useToolStore";
 import type { BuildCtx, MethodDef, Shape } from "./defs";
@@ -86,13 +87,16 @@ function newStyle(s: ToolSettings, kind: string): Entity["style"] {
   if (s.dash && s.dash !== "solid") st.dash = s.dash;
   if (s.color) st.color = s.color;
   if (s.fill && FILLABLE.has(kind)) st.fill = s.fill;
+  if (s.startEnding) st.startEnding = s.startEnding;
+  if (s.endEnding) st.endEnding = s.endEnding;
   return st;
 }
 const empty = (): Overlay => ({ shapes: [], highlight: [], points: [] });
 
-function layerOk(doc: CadDocument) {
+function layerOk(doc: CadDocument, allowLocked = false) {
   const layers = new Map(doc.layers.map((l) => [l.id, l]));
   return (e: Entity) => {
+    if (e.locked && !allowLocked) return false;
     const l = layers.get(e.layerId);
     return !l || (l.visible && !l.locked);
   };
@@ -163,13 +167,17 @@ export class DrawTool implements Tool {
     return !this.isPick(this.pts.length);
   }
 
-  private place(e: { p: Vec2; raw: Vec2; ids?: Id[] }) {
+  private place(e: { p: Vec2; raw: Vec2; ids?: Id[]; screen?: Vec2 }) {
     const i = this.pts.length;
     const p = this.isPick(i) ? e.raw : e.p;
     // An entity pick must land on something.
     if (this.isPick(i) && !this.buildCtx().entityAt(p)) return;
     const last = this.pts[this.pts.length - 1];
-    if (last && dist(last, p) <= 1e-12) return; // second click of a double-click
+    if (last && dist(last, p) <= 1e-9) return;
+    if (this.method.closes && this.pts.length >= (this.method.min ?? 3) && dist(p, this.pts[0]) <= this.ctx.tolerance()) {
+      this.complete(this.pts, true);
+      return;
+    }
     this.pts.push(p);
     this.ids.push(e.ids);
     if (typeof this.method.points === "number" && this.pts.length >= this.method.points) this.complete(this.pts);
@@ -189,10 +197,11 @@ export class DrawTool implements Tool {
     if (!built) return;
     let shapes = Array.isArray(built) ? built : [built];
     if (closed) {
-      // Closing a continuous line/curve: polylines and splines close themselves; walls already got the closing segment.
+      // Closing a continuous line/curve: polylines and splines close themselves; a polygon is already closed.
       const base = this.method.build?.(pts, bctx);
       const single = base && !Array.isArray(base) ? base : null;
       if (single && (single.kind === "polyline" || single.kind === "spline")) shapes = [{ ...single, closed: true }];
+      else if (single && single.kind === "polygon") shapes = [single];
     }
     const s = this.ctx.settings();
     const doc = this.ctx.doc();
@@ -250,7 +259,14 @@ export class DrawTool implements Tool {
   }
 
   dblclick() {
-    if (this.method.points === "many") this.finish();
+    if (this.method.points !== "many") return;
+    // A double-click's second press can land a hair off the vertex just placed. Drop that extra point.
+    const n = this.pts.length;
+    if (n >= 2 && dist(this.pts[n - 1], this.pts[n - 2]) <= this.ctx.tolerance()) {
+      this.pts.pop();
+      this.ids.pop();
+    }
+    this.finish();
   }
 
   key(key: string) {
@@ -383,7 +399,7 @@ export class SelectTool implements Tool {
     if (this.mode === "marquee") return this.b.x < this.a.x ? "Crossing: selects anything the box touches" : "Inside: selects what the box fully encloses";
     if (this.method === "lasso") return "Drag a loop around what to select (Shift adds)";
     if (this.method === "polygon") return this.path.length ? "Next corner; Enter or double-click selects what is inside" : "Click the corners of an area";
-    return "Click to select (Shift adds), drag a box, drag a selection to move it, or drag a handle to reshape";
+    return this.note || "Click to select (Shift adds), drag a box, drag a selection to move it, or drag a handle to reshape. Alt-click selects a locked object";
   }
   from() {
     if (this.mode === "move") return this.base;
@@ -401,12 +417,16 @@ export class SelectTool implements Tool {
     return this.mode === "move" || this.mode === "pending" || this.mode === "grip";
   }
 
-  private ok() {
-    return layerOk(this.ctx.doc());
+  private note = "";
+
+  private ok(alt = false) {
+    const allow = layerOk(this.ctx.doc(), alt);
+    const filter = this.ctx.settings().selectFilter;
+    return (e: Entity) => allow(e) && (!filter || filter === "all" || e.kind === filter);
   }
 
-  private hit(p: Vec2): Id | null {
-    return this.ctx.index().nearest(p, this.ctx.tolerance(), this.ok())[0]?.entity.id ?? null;
+  private hit(p: Vec2, alt = false): Id | null {
+    return this.ctx.index().nearest(p, this.ctx.tolerance(), this.ok(alt))[0]?.entity.id ?? null;
   }
 
   /** A handle of a selected entity under the cursor. */
@@ -437,22 +457,40 @@ export class SelectTool implements Tool {
       if (!last || dist(last, e.raw) > 1e-12) this.path.push(e.raw);
       return;
     }
-    const grip = e.shift ? null : this.handleHit(e.raw);
+    const visible = (ent: Entity) => {
+      const l = this.ctx.doc().layers.find((x) => x.id === ent.layerId);
+      return !l || (l.visible && !l.locked);
+    };
+    const top = this.ctx.index().nearest(e.raw, this.ctx.tolerance(), visible)[0]?.entity;
+    const filter = this.ctx.settings().selectFilter;
+    if (top?.locked && !e.alt && (!filter || filter === "all" || top.kind === filter)) {
+      this.note = "Locked — Alt-click to select it";
+      this.mode = "idle";
+      return;
+    }
+    this.note = "";
+    const id = this.hit(e.raw, e.alt);
+    const members = id ? expandSelection(this.ctx.doc(), [id], "click") : [];
+    // A group is one object: reshape it after Ungroup.
+    const grouped = members.length > 1;
+    const grip = e.shift || grouped ? null : this.handleHit(e.raw);
     if (grip) {
       this.mode = "grip";
       this.grip = grip;
       this.gripTarget = null;
       return;
     }
-    const id = this.hit(e.raw);
-    const sel = new Set(this.ctx.selection());
     if (id) {
       if (e.shift) {
-        if (sel.has(id)) sel.delete(id);
-        else sel.add(id);
+        const sel = new Set(this.ctx.selection());
+        const allIn = members.every((m) => sel.has(m));
+        for (const m of members) {
+          if (allIn) sel.delete(m);
+          else sel.add(m);
+        }
         this.ctx.setSelection(sel);
-      } else if (!sel.has(id)) this.ctx.setSelection([id]);
-      this.mode = this.ctx.selection().has(id) ? "pending" : "idle";
+      } else if (!members.every((m) => this.ctx.selection().has(m))) this.ctx.setSelection(members);
+      this.mode = members.some((m) => this.ctx.selection().has(m)) ? "pending" : "idle";
       this.base = e.p;
       this.delta = { x: 0, y: 0 };
     } else {
@@ -509,9 +547,10 @@ export class SelectTool implements Tool {
         const ent = index.get(id);
         return !!ent && ok(ent);
       };
-      const ids = crossing
+      const rawIds = crossing
         ? index.spatial.search(box).filter((id) => usable(id) && entityTouchesBox(index.get(id)!, box, index))
         : index.spatial.searchInside(box).filter(usable);
+      const ids = expandSelection(this.ctx.doc(), rawIds, crossing ? "crossing" : "inside");
       const sel = new Set(this.additive ? this.ctx.selection() : []);
       for (const id of ids) sel.add(id);
       this.ctx.setSelection(sel);
@@ -520,7 +559,7 @@ export class SelectTool implements Tool {
   }
 
   private finishArea() {
-    const ids = entitiesInPolygon(this.path, this.ctx.index(), this.ok());
+    const ids = expandSelection(this.ctx.doc(), entitiesInPolygon(this.path, this.ctx.index(), this.ok()), "inside");
     const sel = new Set(this.additive ? this.ctx.selection() : []);
     for (const id of ids) sel.add(id);
     this.ctx.setSelection(sel);
@@ -532,9 +571,10 @@ export class SelectTool implements Tool {
     if (d.x === 0 && d.y === 0) return;
     const index = this.ctx.index();
     const pairs: [Entity, Entity][] = [];
+    const ok = this.ok();
     for (const id of this.ctx.selection()) {
       const ent = index.get(id);
-      if (ent) pairs.push([ent, translateEntity(ent, d)]);
+      if (ent && ok(ent)) pairs.push([ent, translateEntity(ent, d)]);
     }
     this.ctx.commit(replacePatch(label, pairs, { transform: translation(d.x, d.y) }));
   }

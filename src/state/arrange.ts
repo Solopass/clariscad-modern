@@ -2,7 +2,7 @@
 import type { Entity, Id } from "../kernel/types";
 import type { Transform2D } from "../kernel/transform";
 import { translation } from "../kernel/transform";
-import { mirrorAcross, rotateAbout, scaleAbout, transformEntity } from "../kernel/edit";
+import { mirrorAcross, rotateAbout, scaleAbout, transformEntity, translateEntity } from "../kernel/edit";
 import { entityBBox, unionBox } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
 import { addPatch, replacePatch, type Patch } from "./ops";
@@ -33,14 +33,59 @@ export function selectionCenter(): Vec2 | null {
  */
 export function copyEntities(ents: Entity[], T: Transform2D, idFn: () => Id = newId): Entity[] {
   const map = new Map<Id, Id>();
+  const groups = new Map<Id, Id>();
   for (const e of ents) map.set(e.id, idFn());
+  // A copied group is its own group, nesting included, so it doesn't stay glued to the original.
+  const groupOf = (g: Id) => {
+    let n = groups.get(g);
+    if (!n) groups.set(g, (n = idFn()));
+    return n;
+  };
   return ents.map((e) => {
     const c = transformEntity(e, T);
-    if (c.kind === "dimension") {
-      return { ...c, id: map.get(e.id)!, refs: c.refs.map((r) => (r && map.has(r.entityId) ? { ...r, entityId: map.get(r.entityId)! } : null)) };
+    const chain = c.kind === "dimension" ? c.groupId : undefined;
+    const rest: Entity = { ...c, id: map.get(e.id)! };
+    delete rest.groups;
+    if (rest.kind === "dimension") delete rest.groupId;
+    const nested = e.groups?.map(groupOf);
+    const chainId = chain ? groupOf(chain) : undefined;
+    const base = { ...rest, id: map.get(e.id)!, ...(nested?.length ? { groups: nested } : {}), ...(chainId ? { groupId: chainId } : {}) } as Entity;
+    if (base.kind === "dimension") {
+      return { ...base, refs: base.refs.map((r) => (r && map.has(r.entityId) ? { ...r, entityId: map.get(r.entityId)! } : null)) };
     }
-    return { ...c, id: map.get(e.id)! };
+    return base;
   });
+}
+
+export type AlignEdge = "left" | "right" | "hcenter" | "top" | "bottom" | "vcenter";
+
+/** Line the selection up on one edge of its collective box. Top is the upper edge (larger Y). */
+export function alignSelection(edge: AlignEdge) {
+  const { index } = store();
+  const items = selected()
+    .map((e) => ({ e, b: entityBBox(e, index.ctx) }))
+    .filter((x): x is { e: Entity; b: NonNullable<ReturnType<typeof entityBBox>> } => !!x.b);
+  if (items.length < 2) return;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const { b } of items) {
+    minX = Math.min(minX, b.minX);
+    maxX = Math.max(maxX, b.maxX);
+    minY = Math.min(minY, b.minY);
+    maxY = Math.max(maxY, b.maxY);
+  }
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+  const ops = [];
+  for (const { e, b } of items) {
+    const dx = edge === "left" ? minX - b.minX : edge === "right" ? maxX - b.maxX : edge === "hcenter" ? midX - (b.minX + b.maxX) / 2 : 0;
+    const dy = edge === "bottom" ? minY - b.minY : edge === "top" ? maxY - b.maxY : edge === "vcenter" ? midY - (b.minY + b.maxY) / 2 : 0;
+    if (dx === 0 && dy === 0) continue;
+    ops.push({ op: "replace" as const, before: e, after: translateEntity(e, { x: dx, y: dy }), transform: translation(dx, dy) });
+  }
+  if (ops.length) store().commit({ label: "Align", ops });
 }
 
 function commitAndSelect(p: Patch, select: Id[]) {

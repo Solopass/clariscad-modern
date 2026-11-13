@@ -6,6 +6,7 @@ import { formatLength, parseAngle, parseLength } from "../kernel/units";
 import { type Vec2, angleOf, dist, fromAngle, add } from "../kernel/vec";
 import { useCursorStore } from "../state/useCursorStore";
 import { useDocumentStore } from "../state/useDocumentStore";
+import { zoomAtPaperSize } from "../state/sheetModel";
 import { viewportRef } from "../canvas/controller";
 
 type Field = "x" | "y" | "dx" | "dy" | "len" | "ang";
@@ -24,6 +25,9 @@ export function CoordinatesHUD() {
   const snapLabel = useCursorStore((s) => s.snapLabel);
   const prompt = useCursorStore((s) => s.prompt);
   const units = useDocumentStore((s) => s.doc.units);
+  const doc = useDocumentStore((s) => s.doc);
+  const view = useCursorStore((s) => s.view);
+  const zoomPct = Math.round((view.zoom / zoomAtPaperSize(doc)) * 100);
   const [edits, setEdits] = useState<Partial<Record<Field, string>>>({});
   const [error, setError] = useState("");
   const refs = useRef<Partial<Record<Field, HTMLInputElement | null>>>({});
@@ -109,6 +113,9 @@ export function CoordinatesHUD() {
         </label>
       ))}
       <span className="w-[44px] font-mono text-[10px] font-bold text-[#d6001c]">{snapLabel}</span>
+      <span className="font-mono text-[11px]" title="Zoom. 100% is paper size: one inch on the page is one inch on the screen.">
+        {Number.isFinite(zoomPct) ? `${zoomPct}%` : ""}
+      </span>
       <span className="truncate text-[11px]" style={{ color: error ? "#d6001c" : "#333" }}>
         {error || prompt}
       </span>

@@ -224,6 +224,10 @@ See `ARCHITECTURE.md` §5.
 
 ## Known gaps / notes
 
-- Tangent snap works on circles/arcs only (not ellipses or splines).
-- Intersections that touch tangentially between two curves (double roots) may be missed by the Newton path.
-- Walls are capped bands until the wall solver lands (M3).
+Checked against Claris CAD 2.0v3. Still open, on purpose or still out of reach:
+
+- An object's ruler is the layer's scale. One shared model space is deliberate: snaps and intersections work across layers, and the scale sizes the page and the annotations. Per-object magnification is not planned.
+- A fillet of two arcs is the minor arc. A tangent touch between two curves (a double root) can still be missed.
+- Spline trim, split and offset, and ellipse offset, follow the curve with an interpolated spline. They are not an exact NURBS split.
+- Hatch lines are not written to DXF. Symbol editing is explode-and-remake. The menu bar stays inside the window so a native macOS menu would not fire the same shortcuts twice.
+- A few Claris keys are remapped because the browser owns them (view source, address bar, reload, tab switching). The shortcut panel lists the keys that are actually bound.

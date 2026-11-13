@@ -4,6 +4,7 @@
 // construction lines and are not plotted.
 import type { CadDocument, Entity, Layer, Id } from "../kernel/types";
 import { type PrimContext, flattenPrim, primsOf, symbolTexts, symbolTransform, entityBBox, unionBox } from "../kernel/prims";
+import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
 import { STANDARDS, dimGeometry } from "../kernel/dimensions";
 import { entityHatch, fillRings, outlineOf, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
@@ -78,6 +79,13 @@ export function buildDisplayList(doc: CadDocument, ctx: PrimContext, tol: number
       if (p.t === "xline") continue;
       const { pts } = flattenPrim(p, tol);
       marks.push({ t: "stroke", pts, closed: false, pen, color: ink, ...(dash ? { dash } : {}) });
+    }
+    for (const end of pathEnds(e)) {
+      const kind = endingKind(e, end.at);
+      if (!kind) continue;
+      const shape = endingOutline(end.tip, end.dir, kind, 3.2 * k);
+      if (shape.fill) marks.push({ t: "fill", rings: [shape.pts], color: ink });
+      else marks.push({ t: "stroke", pts: shape.pts, closed: false, pen, color: ink });
     }
   }
   return { marks, bbox };

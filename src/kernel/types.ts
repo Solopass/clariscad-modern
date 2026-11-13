@@ -7,6 +7,9 @@ export type Id = string;
 
 export type Justify = "center" | "left" | "right";
 
+/** A cap drawn at an open end of a line, arc, polyline, curve or partial ellipse. */
+export type LineEnding = "arrow" | "open" | "tick" | "dot";
+
 export interface StyleRef {
   /** Pen weight in mm on paper (0.13 – 2.00). */
   penWeight?: number;
@@ -17,12 +20,24 @@ export interface StyleRef {
   fill?: string;
   /** Pattern size multiplier (1 = the pattern's paper size at the layer scale). */
   fillScale?: number;
+  /** Cap at the start of an open path. */
+  startEnding?: LineEnding;
+  /** Cap at the end of an open path. */
+  endEnding?: LineEnding;
 }
 
 interface EntityBase {
   id: Id;
   layerId: Id;
   style?: StyleRef;
+  /**
+   * Group membership, outermost first. `groups[0]` is the group a click selects;
+   * later ids are groups nested inside it. Ungroup peels the first id.
+   * A dimension's chain id is `groupId` on that entity, not this list.
+   */
+  groups?: Id[];
+  /** Locked objects stay snappable and visible, and are not selected or edited. Alt-click selects one. */
+  locked?: boolean;
 }
 
 export interface LineEntity extends EntityBase {
@@ -246,6 +261,18 @@ export type UnitSystem = "architectural" | "engineering" | "inches" | "feet" | "
 
 export type DraftingStandard = "ANSI" | "ISO" | "DIN" | "JIS" | "BS308";
 
+/** The sheet the drawing sits on. Pages tile from the origin (lower left) in +x/+y. */
+export interface Sheet {
+  /** A key of the paper-size table (letter, a4, …). */
+  paperId: string;
+  landscape: boolean;
+  pagesX: number;
+  pagesY: number;
+}
+
+/** Letter, landscape, one page. The active layer's scale turns this into model size. */
+export const DEFAULT_SHEET: Sheet = { paperId: "letter", landscape: true, pagesX: 1, pagesY: 1 };
+
 /** A whole drawing, as saved in .tcad. */
 export interface CadDocument {
   /** File-format version; bump on breaking schema changes and add a migration. */
@@ -257,6 +284,8 @@ export interface CadDocument {
   /** Draw order: later entities draw on top. */
   entities: Entity[];
   symbols: SymbolDef[];
+  /** Missing on older files; readers fill in {@link DEFAULT_SHEET}. */
+  sheet?: Sheet;
 }
 
 export const DOCUMENT_VERSION = 1;

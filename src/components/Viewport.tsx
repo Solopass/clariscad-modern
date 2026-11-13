@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { ViewportController, viewportRef } from "../canvas/controller";
 import { useDocumentStore } from "../state/useDocumentStore";
 import { useToolStore } from "../state/useToolStore";
+import { Ruler, RulerCorner } from "./Rulers";
 
 export function Viewport() {
   const host = useRef<HTMLDivElement>(null);
@@ -21,10 +22,19 @@ export function Viewport() {
   }, []);
 
   return (
-    <div ref={host} className="viewport relative h-full w-full overflow-hidden">
-      <canvas ref={grid} />
-      <canvas ref={stat} />
-      <canvas ref={over} className="overlay" />
+    <div className="flex h-full w-full flex-col">
+      <div className="flex shrink-0">
+        <RulerCorner />
+        <Ruler side="top" />
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <Ruler side="left" />
+        <div ref={host} className="viewport relative min-w-0 flex-1 overflow-hidden">
+          <canvas ref={grid} />
+          <canvas ref={stat} />
+          <canvas ref={over} className="overlay" />
+        </div>
+      </div>
     </div>
   );
 }

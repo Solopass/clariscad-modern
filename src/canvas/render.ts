@@ -6,8 +6,9 @@ import { textWidth } from "../kernel/textMetrics";
 import { handlesOf } from "../kernel/handles";
 import { entityHatch, fillRings, patternById } from "../kernel/hatch";
 import { type Transform2D, apply, multiply } from "../kernel/transform";
-import { type Prim, type PrimContext, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
+import { type Prim, type PrimContext, entityBBox, flattenPrim, primsOf, symbolTexts, symbolTransform } from "../kernel/prims";
 import type { Vec2 } from "../kernel/vec";
+import { endingKind, endingOutline, pathEnds } from "../kernel/endings";
 import { type Camera, viewBox, worldToScreen } from "./camera";
 
 export const DASH_PATTERNS: Record<string, number[]> = {
@@ -21,6 +22,8 @@ export const DASH_PATTERNS: Record<string, number[]> = {
 
 export interface Theme {
   paper: string;
+  /** The area outside the page, like the gray pasteboard around a Claris drawing. */
+  pasteboard: string;
   ink: string;
   grid: string;
   gridMajor: string;
@@ -33,6 +36,7 @@ export interface Theme {
 
 export const CLASSIC: Theme = {
   paper: "#ffffff",
+  pasteboard: "#c4c4c4",
   ink: "#000000",
   grid: "#d8d8d8",
   gridMajor: "#b0b0b0",
@@ -43,8 +47,15 @@ export const CLASSIC: Theme = {
   axis: "#9a9a9a",
 };
 
-/** Paper pen weight (mm) → screen pixels, at least a hairline. */
+/** Paper pen weight (mm) at 96 dpi, ignoring zoom. Prefer the zoom-aware width in strokeEntity. */
 export const penPx = (mm = 0.25) => Math.max(1, (mm * 96) / 25.4);
+
+export interface PageRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export function setupCanvas(canvas: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
   const dpr = window.devicePixelRatio || 1;
@@ -82,33 +93,73 @@ export function displayGridStep(base: number, zoom: number, minPx = 12): { step:
   return { step, major: inchBased ? 304.8 : step * 10 };
 }
 
-export function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, theme: Theme, base: number, visible: boolean) {
-  ctx.fillStyle = theme.paper;
+function pageScreenRect(cam: Camera, p: PageRect) {
+  const a = worldToScreen(cam, { x: p.x, y: p.y + p.h });
+  const b = worldToScreen(cam, { x: p.x + p.w, y: p.y });
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+}
+
+/**
+ * Pasteboard, white pages, then the grid (clipped to the pages when a sheet is given).
+ * `pages` are model-space rectangles; omit them to fill the whole view with paper.
+ */
+export function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, theme: Theme, base: number, visible: boolean, pages?: PageRect[]) {
+  ctx.fillStyle = pages?.length ? theme.pasteboard : theme.paper;
   ctx.fillRect(0, 0, cam.width, cam.height);
-  if (!visible || !(base > 0)) return;
-  const { step, major } = displayGridStep(base, cam.zoom, 12);
-  const vb = viewBox(cam);
-  const draw = (s: number, color: string) => {
-    ctx.strokeStyle = color;
+  if (pages?.length) {
+    ctx.fillStyle = theme.paper;
+    for (const p of pages) {
+      const r = pageScreenRect(cam, p);
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+  }
+  if (visible && base > 0) {
+    const { step, major } = displayGridStep(base, cam.zoom, 12);
+    const vb = viewBox(cam);
+    ctx.save();
+    if (pages?.length) {
+      ctx.beginPath();
+      for (const p of pages) {
+        const r = pageScreenRect(cam, p);
+        ctx.rect(r.x, r.y, r.w, r.h);
+      }
+      ctx.clip();
+    }
+    const draw = (s: number, color: string) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const x0 = Math.ceil(vb.minX / s) * s;
+      for (let x = x0; x <= vb.maxX; x += s) {
+        const sx = Math.round(worldToScreen(cam, { x, y: 0 }).x) + 0.5;
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, cam.height);
+      }
+      const y0 = Math.ceil(vb.minY / s) * s;
+      for (let y = y0; y <= vb.maxY; y += s) {
+        const sy = Math.round(worldToScreen(cam, { x: 0, y }).y) + 0.5;
+        ctx.moveTo(0, sy);
+        ctx.lineTo(cam.width, sy);
+      }
+      ctx.stroke();
+    };
+    draw(step, theme.grid);
+    if (Number.isFinite(major) && major * cam.zoom > 40) draw(major, theme.gridMajor);
+    ctx.restore();
+  }
+  if (pages?.length) {
+    ctx.strokeStyle = "#000";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const x0 = Math.ceil(vb.minX / s) * s;
-    for (let x = x0; x <= vb.maxX; x += s) {
-      const sx = Math.round(worldToScreen(cam, { x, y: 0 }).x) + 0.5;
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, cam.height);
-    }
-    const y0 = Math.ceil(vb.minY / s) * s;
-    for (let y = y0; y <= vb.maxY; y += s) {
-      const sy = Math.round(worldToScreen(cam, { x: 0, y }).y) + 0.5;
-      ctx.moveTo(0, sy);
-      ctx.lineTo(cam.width, sy);
+    for (const p of pages) {
+      const r = pageScreenRect(cam, p);
+      ctx.rect(Math.round(r.x) + 0.5, Math.round(r.y) + 0.5, Math.round(r.w), Math.round(r.h));
     }
     ctx.stroke();
-  };
-  draw(step, theme.grid);
-  if (Number.isFinite(major) && major * cam.zoom > 40) draw(major, theme.gridMajor);
-  // Origin cross.
+  }
+  // Origin cross — the lower-left corner of page 1.
   const o = worldToScreen(cam, { x: 0, y: 0 });
   ctx.strokeStyle = theme.axis;
   ctx.beginPath();
@@ -196,12 +247,52 @@ export function strokeEntity(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawC
   const layer = dc.layers.get(e.layerId);
   const isGuide = e.kind === "guide";
   ctx.strokeStyle = override?.color ?? (isGuide ? dc.theme.guide : (e.style?.color ?? layer?.color ?? dc.theme.ink));
-  ctx.lineWidth = override?.width ?? (dc.showWeights ? penPx(e.style?.penWeight) : 1);
+  // Pen weight is a paper size. On screen it grows and shrinks with the zoom, the way a printed line would.
+  const paperPx = (e.style?.penWeight ?? 0.25) * dc.cam.zoom * (layer?.scale ?? 1);
+  ctx.lineWidth = override?.width ?? (!isGuide && dc.showWeights ? Math.max(0.75, paperPx) : 1);
   ctx.setLineDash(override?.dash ?? (isGuide ? [4, 4] : (DASH_PATTERNS[e.style?.dash ?? "solid"] ?? [])));
   ctx.beginPath();
   for (const p of primsOf(e, dc.symbols)) tracePrim(ctx, dc.cam, p);
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+function drawEndings(ctx: CanvasRenderingContext2D, e: Entity, dc: DrawContext) {
+  if (!e.style?.startEnding && !e.style?.endEnding) return;
+  const k = dc.layers.get(e.layerId)?.scale ?? 1;
+  const size = 3.2 * k;
+  const color = e.style?.color ?? dc.layers.get(e.layerId)?.color ?? dc.theme.ink;
+  for (const end of pathEnds(e)) {
+    const kind = endingKind(e, end.at);
+    if (!kind) continue;
+    const shape = endingOutline(end.tip, end.dir, kind, size);
+    ctx.beginPath();
+    shape.pts.forEach((p, i) => {
+      const s = worldToScreen(dc.cam, p);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    if (shape.fill) {
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+  if (e.locked) {
+    const b = entityBBox(e, dc.symbols);
+    if (!b) return;
+    const c = worldToScreen(dc.cam, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(c.x - 3, c.y - 4, 6, 5);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y - 4, 2, Math.PI, 0);
+    ctx.stroke();
+  }
 }
 
 export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<Entity>, dc: DrawContext) {
@@ -213,6 +304,19 @@ export function drawEntities(ctx: CanvasRenderingContext2D, entities: Iterable<E
     if (e.style?.fill) fillEntity(ctx, e, dc);
     if (e.kind === "symbol") fillSymbol(ctx, e, dc);
     strokeEntity(ctx, e, dc);
+    drawEndings(ctx, e, dc);
+    if (e.locked && !e.style?.startEnding && !e.style?.endEnding) {
+      const b = entityBBox(e, dc.symbols);
+      if (b) {
+        const c = worldToScreen(dc.cam, { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 });
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(c.x - 3, c.y - 4, 6, 5);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - 4, 2, Math.PI, 0);
+        ctx.stroke();
+      }
+    }
     if (e.kind === "symbol") for (const t of symbolTexts(e, dc.symbols)) drawText(ctx, t, dc);
   }
 }
