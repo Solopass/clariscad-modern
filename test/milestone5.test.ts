@@ -112,7 +112,7 @@ describe("DXF", () => {
     S().commit({ label: "sym", ops: [{ op: "symbolDef", before: null, after: { id: "s1", name: "Door Tag", origin: { x: 1, y: 1 }, entities: [L("x", 1, 1, 3, 3)] }, index: 0 }] });
     add({ id: "i", layerId: "layer-1", kind: "symbol", symbolId: "s1", position: { x: 50, y: 50 }, rotation: Math.PI / 2, scaleX: 2, scaleY: 2 });
     const dxf = exportDxf(S().doc, S().index.ctx!);
-    expect(dxf).toContain("AC1009");
+    expect(dxf).toContain("AC1015");
     const r = importDxf(dxf);
     const kinds = r.doc.entities.map((e) => e.kind).sort();
     expect(kinds).toEqual(["arc", "circle", "line", "polyline", "symbol", "text"]);
